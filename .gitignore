@@ -1,0 +1,21 @@
+# Build output
+bin/
+obj/
+out/
+dist/
+*.vsix
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Node (for future VS Code extension sibling)
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+Thumbs.db
