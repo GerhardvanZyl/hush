@@ -30,7 +30,17 @@
       "kind": "roslynCall",
       "pattern": {
         "receiverTypeGlob": "Activity",
-        "methodNameGlob": "AddTag|AddEvent|SetTag|SetStatus"
+        "methodNameGlob": "AddTag|AddEvent|SetTag|SetStatus|AddBaggage|Stop|Dispose"
+      },
+      "scope": "wholeStatement"
+    },
+    {
+      "name": "diagnostic-activity-source",
+      "category": "telemetry",
+      "kind": "roslynCall",
+      "pattern": {
+        "receiverTypeGlob": "ActivitySource",
+        "methodNameGlob": "Start*|HasListeners"
       },
       "scope": "wholeStatement"
     },

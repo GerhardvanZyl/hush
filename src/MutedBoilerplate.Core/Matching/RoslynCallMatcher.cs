@@ -76,6 +76,15 @@ public sealed class RoslynCallMatcher : IRuleMatcher
                 receiverName = LeftmostIdentifier(mae.Expression);
                 return !string.IsNullOrEmpty(methodName);
 
+            case MemberBindingExpressionSyntax mbe:
+                // Null-conditional invocation, e.g. `activity?.SetTag(...)`. The receiver
+                // sits on the enclosing ConditionalAccessExpressionSyntax — walk up to it.
+                methodName = mbe.Name.Identifier.Text;
+                var conditional = inv.FirstAncestorOrSelf<ConditionalAccessExpressionSyntax>();
+                if (conditional?.Expression is { } recv)
+                    receiverName = LeftmostIdentifier(recv);
+                return !string.IsNullOrEmpty(methodName);
+
             case IdentifierNameSyntax id:
                 methodName = id.Identifier.Text;
                 return !string.IsNullOrEmpty(methodName);
