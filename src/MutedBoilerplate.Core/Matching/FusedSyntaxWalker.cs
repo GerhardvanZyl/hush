@@ -28,6 +28,7 @@ internal sealed class FusedSyntaxWalker : CSharpSyntaxWalker
     private readonly IReadOnlyList<ExclusionRule>? _callExclusions;
     private readonly IReadOnlyList<ExclusionRule>? _identifierExclusions;
     private readonly List<(ExclusionRule, TextSpan)>? _exclusionOutput;
+    private readonly TextSpan? _limitRange;
 
     public FusedSyntaxWalker(
         IReadOnlyList<MuteRule> callRules,
@@ -37,7 +38,8 @@ internal sealed class FusedSyntaxWalker : CSharpSyntaxWalker
         List<(MuteRule, MuteSpan)> spanOutput,
         IReadOnlyList<ExclusionRule>? callExclusions = null,
         IReadOnlyList<ExclusionRule>? identifierExclusions = null,
-        List<(ExclusionRule, TextSpan)>? exclusionOutput = null)
+        List<(ExclusionRule, TextSpan)>? exclusionOutput = null,
+        TextSpan? limitRange = null)
     {
         _callRules = callRules;
         _identifierRules = identifierRules;
@@ -47,6 +49,7 @@ internal sealed class FusedSyntaxWalker : CSharpSyntaxWalker
         _callExclusions = callExclusions;
         _identifierExclusions = identifierExclusions;
         _exclusionOutput = exclusionOutput;
+        _limitRange = limitRange;
     }
 
     public static void Walk(
@@ -58,13 +61,25 @@ internal sealed class FusedSyntaxWalker : CSharpSyntaxWalker
         List<(MuteRule, MuteSpan)> spanOutput,
         IReadOnlyList<ExclusionRule>? callExclusions = null,
         IReadOnlyList<ExclusionRule>? identifierExclusions = null,
-        List<(ExclusionRule, TextSpan)>? exclusionOutput = null)
+        List<(ExclusionRule, TextSpan)>? exclusionOutput = null,
+        TextSpan? limitRange = null)
     {
         PerfCounters.IncrementTreeWalks();
         var w = new FusedSyntaxWalker(
             callRules, identifierRules, signatureRules, semantics, spanOutput,
-            callExclusions, identifierExclusions, exclusionOutput);
+            callExclusions, identifierExclusions, exclusionOutput, limitRange);
         w.Visit(root);
+    }
+
+    // Phase 5: prune the walk to nodes that intersect the incremental dirty
+    // range. Roslyn's WithChangedText preserves reference-equal subtrees for
+    // unchanged code, so even a by-position filter cuts traversal down to
+    // the edited method(s).
+    public override void Visit(SyntaxNode? node)
+    {
+        if (node is null) return;
+        if (_limitRange is { } lim && !node.Span.IntersectsWith(lim)) return;
+        base.Visit(node);
     }
 
     public override void VisitInvocationExpression(InvocationExpressionSyntax node)

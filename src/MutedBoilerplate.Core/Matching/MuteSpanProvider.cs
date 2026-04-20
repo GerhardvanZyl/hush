@@ -37,7 +37,18 @@ public sealed class MuteSpanProvider : IMuteSpanProvider
             new RegexExclusionMatcher(),
         });
 
-    public IEnumerable<MuteSpan> GetSpans(MatchContext ctx, MuteState state, RuleSet ruleSet)
+    public IEnumerable<MuteSpan> GetSpans(MatchContext ctx, MuteState state, RuleSet ruleSet) =>
+        GetSpansCore(ctx, state, ruleSet, null);
+
+    // Phase 5: compute only spans that intersect the given range. Used by the
+    // incremental path in SnapshotMuteCache — caller merges with shifted
+    // pre-existing spans from outside the range. Only correct when exclusions
+    // aren't active (an exclusion outside the range could veto a candidate
+    // inside). Callers must gate on that.
+    public IEnumerable<MuteSpan> GetSpansInRange(MatchContext ctx, MuteState state, RuleSet ruleSet, TextSpan limitRange) =>
+        GetSpansCore(ctx, state, ruleSet, limitRange);
+
+    private IEnumerable<MuteSpan> GetSpansCore(MatchContext ctx, MuteState state, RuleSet ruleSet, TextSpan? limitRange)
     {
         PerfCounters.IncrementGetSpansCalls();
 
@@ -111,7 +122,8 @@ public sealed class MuteSpanProvider : IMuteSpanProvider
                     candidates,
                     callExclusions,
                     idExclusions,
-                    globalExclusions);
+                    globalExclusions,
+                    limitRange);
             }
         }
 
@@ -123,7 +135,10 @@ public sealed class MuteSpanProvider : IMuteSpanProvider
                 var rule = otherRules[i];
                 if (!_matchers.TryGetValue(rule.Kind, out var matcher)) continue;
                 foreach (var span in matcher.Match(rule, ctx))
+                {
+                    if (limitRange is { } lim && !span.Span.IntersectsWith(lim)) continue;
                     candidates.Add((rule, span));
+                }
             }
         }
 

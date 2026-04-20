@@ -2,10 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.CodeAnalysis.Text;
 using Microsoft.VisualStudio.Text;
 using MutedBoilerplate.Core.Diagnostics;
 using MutedBoilerplate.Core.Matching;
 using MutedBoilerplate.Core.Model;
+using MutedBoilerplate.Core.Rules;
 using MutedBoilerplate.VS.Options;
 
 namespace MutedBoilerplate.VS.Integration;
@@ -87,13 +89,22 @@ internal sealed class SnapshotMuteCache
     {
         var snapshot = _buffer.CurrentSnapshot;
         var captured = _state.Capture();
+        var prev = Volatile.Read(ref _current);
 
         MuteSpan[] spans;
         try
         {
             var ctx = BufferDocumentAdapter.Build(_buffer, snapshot);
-            var list = _state.Provider.GetSpans(ctx, captured.State, captured.RuleSet);
-            spans = ToSortedArray(list);
+
+            if (TryIncremental(prev, snapshot, captured, ctx, out var incremental))
+            {
+                spans = incremental;
+            }
+            else
+            {
+                var list = _state.Provider.GetSpans(ctx, captured.State, captured.RuleSet);
+                spans = ToSortedArray(list);
+            }
         }
         catch
         {
@@ -111,6 +122,116 @@ internal sealed class SnapshotMuteCache
 
         Volatile.Write(ref _current, next);
         ResultUpdated?.Invoke(this, EventArgs.Empty);
+    }
+
+    // Phase 5: try to reuse the previous result for text outside the edited
+    // region. Preconditions:
+    //   * previous result exists with matching state + ruleset versions
+    //   * previous snapshot's version number is strictly before the new one
+    //   * exclusions aren't active (exclusion spans outside the dirty range
+    //     could veto candidates inside it; incremental can't see them)
+    //   * dirty range is reasonably small (< ~30% of the new text length)
+    //
+    // On success, writes the merged spans (old outside-dirty shifted, new
+    // inside-dirty fresh) into `spans` and returns true.
+    private bool TryIncremental(
+        CachedResult? prev,
+        ITextSnapshot newSnapshot,
+        MuteStateSnapshot captured,
+        MatchContext ctx,
+        out MuteSpan[] spans)
+    {
+        spans = Array.Empty<MuteSpan>();
+        if (prev is null) return false;
+        if (prev.StateVersion != captured.StateVersion) return false;
+        if (prev.RuleSetVersion != captured.RuleSetVersion) return false;
+        if (ReferenceEquals(prev.Snapshot, newSnapshot))
+        {
+            // No text change since last compute.
+            spans = prev.Spans;
+            return true;
+        }
+        if (prev.Snapshot.TextBuffer != newSnapshot.TextBuffer) return false;
+        if (prev.Snapshot.Version.VersionNumber >= newSnapshot.Version.VersionNumber) return false;
+        if (HasActiveExclusions(captured)) return false;
+        if (_state.Provider is not MuteSpanProvider provider) return false;
+
+        var oldText = prev.Snapshot.AsText();
+        var newText = newSnapshot.AsText();
+        var changes = newText.GetChangeRanges(oldText);
+        if (changes.Count == 0)
+        {
+            spans = prev.Spans;
+            return true;
+        }
+
+        int oldDirtyStart = int.MaxValue, oldDirtyEnd = int.MinValue;
+        int netDelta = 0;
+        foreach (var ch in changes)
+        {
+            if (ch.Span.Start < oldDirtyStart) oldDirtyStart = ch.Span.Start;
+            if (ch.Span.End > oldDirtyEnd) oldDirtyEnd = ch.Span.End;
+            netDelta += ch.NewLength - ch.Span.Length;
+        }
+
+        var newLength = newText.Length;
+        if (newLength > 0)
+        {
+            var newDirtyLen = (oldDirtyEnd - oldDirtyStart) + netDelta;
+            // Big paste / bulk replace — incremental overhead isn't worth it.
+            if (newDirtyLen * 10 > newLength * 3) return false;
+        }
+
+        var newDirty = TextSpan.FromBounds(oldDirtyStart, oldDirtyEnd + netDelta);
+
+        var fresh = provider.GetSpansInRange(ctx, captured.State, captured.RuleSet, newDirty);
+
+        spans = MergeIncremental(prev.Spans, fresh, oldDirtyStart, oldDirtyEnd, netDelta);
+        return true;
+    }
+
+    private static bool HasActiveExclusions(MuteStateSnapshot captured)
+    {
+        if (!captured.State.ExclusionsEnabled) return false;
+        if (captured.RuleSet.Exclusions.Count > 0) return true;
+        foreach (var rule in captured.RuleSet.Rules)
+        {
+            if (rule.Excludes is { Length: > 0 }) return true;
+        }
+        return false;
+    }
+
+    private static MuteSpan[] MergeIncremental(
+        MuteSpan[] oldSpans,
+        IEnumerable<MuteSpan> freshSpans,
+        int oldDirtyStart,
+        int oldDirtyEnd,
+        int netDelta)
+    {
+        var merged = new List<MuteSpan>(oldSpans.Length + 16);
+
+        for (int i = 0; i < oldSpans.Length; i++)
+        {
+            var s = oldSpans[i];
+            int ss = s.Span.Start, se = s.Span.End;
+            if (se <= oldDirtyStart)
+            {
+                merged.Add(s);
+            }
+            else if (ss >= oldDirtyEnd)
+            {
+                merged.Add(new MuteSpan(
+                    TextSpan.FromBounds(ss + netDelta, se + netDelta),
+                    s.CategoryKey, s.RuleName, s.Scope));
+            }
+            // overlap: drop — fresh walk regenerates inside dirty range
+        }
+
+        foreach (var f in freshSpans) merged.Add(f);
+
+        var arr = merged.ToArray();
+        Array.Sort(arr, CompareByStart);
+        return arr;
     }
 
     private static bool IsFresh(CachedResult? c, ITextSnapshot snap, int stateVer, int ruleVer) =>
