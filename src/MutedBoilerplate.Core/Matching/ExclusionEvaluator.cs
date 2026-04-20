@@ -23,7 +23,16 @@ public sealed class ExclusionEvaluator
         RuleSet ruleSet)
     {
         var globalSpans = MaterializeExclusions(ruleSet.Exclusions, ctx);
+        return ApplyWithGlobals(candidates, globalSpans, ctx);
+    }
 
+    // Overload used by MuteSpanProvider once it has already materialized the
+    // global exclusion spans during its fused tree walk — avoids a second pass.
+    internal IEnumerable<MuteSpan> ApplyWithGlobals(
+        IEnumerable<(MuteRule rule, MuteSpan span)> candidates,
+        List<(ExclusionRule, TextSpan)> globalSpans,
+        MatchContext ctx)
+    {
         foreach (var (rule, span) in candidates)
         {
             if (IsExcluded(rule, span, globalSpans, ctx))

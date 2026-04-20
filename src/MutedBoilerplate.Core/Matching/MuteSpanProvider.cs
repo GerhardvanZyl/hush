@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.CodeAnalysis.Text;
 using MutedBoilerplate.Core.Diagnostics;
 using MutedBoilerplate.Core.Model;
 using MutedBoilerplate.Core.Rules;
@@ -10,12 +11,15 @@ namespace MutedBoilerplate.Core.Matching;
 public sealed class MuteSpanProvider : IMuteSpanProvider
 {
     private readonly IReadOnlyDictionary<string, IRuleMatcher> _matchers;
+    private readonly IReadOnlyDictionary<string, IExclusionMatcher> _exclusionMatchers;
     private readonly ExclusionEvaluator _exclusions;
 
     public MuteSpanProvider(IEnumerable<IRuleMatcher> matchers, IEnumerable<IExclusionMatcher> exclusionMatchers)
     {
         _matchers = matchers.ToDictionary(m => m.Kind, StringComparer.OrdinalIgnoreCase);
-        _exclusions = new ExclusionEvaluator(exclusionMatchers);
+        var excMatchers = exclusionMatchers.ToList();
+        _exclusionMatchers = excMatchers.ToDictionary(m => m.Kind, StringComparer.OrdinalIgnoreCase);
+        _exclusions = new ExclusionEvaluator(excMatchers);
     }
 
     public static MuteSpanProvider CreateDefault() => new(
@@ -37,24 +41,102 @@ public sealed class MuteSpanProvider : IMuteSpanProvider
     {
         PerfCounters.IncrementGetSpansCalls();
 
-        var candidates = new List<(MuteRule, MuteSpan)>();
+        // Partition active rules by kind so the fused walker can dispatch per
+        // node without a kind check per rule per node.
+        List<MuteRule>? callRules = null;
+        List<MuteRule>? identifierRules = null;
+        List<MuteRule>? signatureRules = null;
+        List<MuteRule>? otherRules = null;
         var anyLocalExcludes = false;
 
         foreach (var rule in ruleSet.Rules)
         {
             if (!state.IsEnabled(rule.Category)) continue;
-            if (!_matchers.TryGetValue(rule.Kind, out var matcher)) continue;
             if (rule.Excludes is { Length: > 0 }) anyLocalExcludes = true;
-            foreach (var span in matcher.Match(rule, ctx))
+
+            switch (rule.Kind)
             {
-                candidates.Add((rule, span));
+                case RuleKind.RoslynCall: (callRules ??= new()).Add(rule); break;
+                case RuleKind.Identifier: (identifierRules ??= new()).Add(rule); break;
+                case RuleKind.Signature: (signatureRules ??= new()).Add(rule); break;
+                default: (otherRules ??= new()).Add(rule); break;
             }
         }
 
-        // Short-circuit the evaluator entirely when there's no exclusion work
-        // to do. Avoids a full tree walk per exclusion matcher on every call.
         var hasExclusions = state.ExclusionsEnabled
             && (ruleSet.Exclusions.Count > 0 || anyLocalExcludes);
+
+        List<ExclusionRule>? callExclusions = null;
+        List<ExclusionRule>? idExclusions = null;
+        List<ExclusionRule>? otherExclusions = null;
+        if (hasExclusions && ruleSet.Exclusions.Count > 0)
+        {
+            foreach (var ex in ruleSet.Exclusions)
+            {
+                switch (ex.Kind)
+                {
+                    case RuleKind.RoslynCall: (callExclusions ??= new()).Add(ex); break;
+                    case RuleKind.Identifier: (idExclusions ??= new()).Add(ex); break;
+                    default: (otherExclusions ??= new()).Add(ex); break;
+                }
+            }
+        }
+
+        var candidates = new List<(MuteRule, MuteSpan)>();
+        var globalExclusions = hasExclusions
+            ? new List<(ExclusionRule, TextSpan)>()
+            : null;
+
+        // One tree walk for all Roslyn-based rules and Roslyn-kind exclusions.
+        if (ctx.Tree is not null)
+        {
+            var needsWalk =
+                (callRules?.Count ?? 0) > 0 ||
+                (identifierRules?.Count ?? 0) > 0 ||
+                (signatureRules?.Count ?? 0) > 0 ||
+                (callExclusions?.Count ?? 0) > 0 ||
+                (idExclusions?.Count ?? 0) > 0;
+
+            if (needsWalk)
+            {
+                if (hasExclusions)
+                    PerfCounters.IncrementExclusionMaterializations();
+
+                FusedSyntaxWalker.Walk(
+                    ctx.Tree.GetRoot(),
+                    (IReadOnlyList<MuteRule>?)callRules ?? Array.Empty<MuteRule>(),
+                    (IReadOnlyList<MuteRule>?)identifierRules ?? Array.Empty<MuteRule>(),
+                    (IReadOnlyList<MuteRule>?)signatureRules ?? Array.Empty<MuteRule>(),
+                    ctx.Semantics,
+                    candidates,
+                    callExclusions,
+                    idExclusions,
+                    globalExclusions);
+            }
+        }
+
+        // Non-Roslyn rules (regex) — matcher dispatch unchanged.
+        if (otherRules is not null)
+        {
+            for (int i = 0; i < otherRules.Count; i++)
+            {
+                var rule = otherRules[i];
+                if (!_matchers.TryGetValue(rule.Kind, out var matcher)) continue;
+                foreach (var span in matcher.Match(rule, ctx))
+                    candidates.Add((rule, span));
+            }
+        }
+
+        if (hasExclusions && otherExclusions is not null)
+        {
+            for (int i = 0; i < otherExclusions.Count; i++)
+            {
+                var ex = otherExclusions[i];
+                if (!_exclusionMatchers.TryGetValue(ex.Kind, out var matcher)) continue;
+                foreach (var span in matcher.Match(ex, ctx))
+                    globalExclusions!.Add((ex, span));
+            }
+        }
 
         List<MuteSpan> result;
         if (!hasExclusions)
@@ -64,7 +146,7 @@ public sealed class MuteSpanProvider : IMuteSpanProvider
         }
         else
         {
-            result = _exclusions.Apply(candidates, ctx, ruleSet).ToList();
+            result = _exclusions.ApplyWithGlobals(candidates, globalExclusions!, ctx).ToList();
         }
 
         PerfCounters.AddSpansEmitted(result.Count);

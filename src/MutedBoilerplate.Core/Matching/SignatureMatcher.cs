@@ -29,14 +29,23 @@ public sealed class SignatureMatcher : IRuleMatcher
         }
     }
 
-    private static bool ModifiersMatch(BaseMethodDeclarationSyntax method, RulePattern p)
+    internal static bool ModifiersMatch(BaseMethodDeclarationSyntax method, RulePattern p)
     {
         if (p.ModifiersAny is null || p.ModifiersAny.Length == 0) return true;
-        var present = method.Modifiers.Select(m => m.Text).ToArray();
-        return p.ModifiersAny.Any(want => present.Contains(want));
+        // Avoid LINQ here: called for every method in every tree walk.
+        var modifiers = method.Modifiers;
+        for (int i = 0; i < p.ModifiersAny.Length; i++)
+        {
+            var want = p.ModifiersAny[i];
+            for (int j = 0; j < modifiers.Count; j++)
+            {
+                if (modifiers[j].Text == want) return true;
+            }
+        }
+        return false;
     }
 
-    private static bool AttributesMatch(BaseMethodDeclarationSyntax method, RulePattern p)
+    internal static bool AttributesMatch(BaseMethodDeclarationSyntax method, RulePattern p)
     {
         if (p.AttributesAny is null || p.AttributesAny.Length == 0) return true;
         foreach (var list in method.AttributeLists)
@@ -44,8 +53,10 @@ public sealed class SignatureMatcher : IRuleMatcher
             foreach (var attr in list.Attributes)
             {
                 var name = attr.Name.ToString();
-                if (p.AttributesAny.Any(a => GlobPattern.IsMatch(a, name)))
-                    return true;
+                for (int i = 0; i < p.AttributesAny.Length; i++)
+                {
+                    if (GlobPattern.IsMatch(p.AttributesAny[i], name)) return true;
+                }
             }
         }
         return false;
