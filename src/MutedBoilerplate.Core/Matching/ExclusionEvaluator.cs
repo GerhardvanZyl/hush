@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.CodeAnalysis.Text;
+using MutedBoilerplate.Core.Diagnostics;
 using MutedBoilerplate.Core.Model;
 using MutedBoilerplate.Core.Rules;
 
@@ -60,6 +61,7 @@ public sealed class ExclusionEvaluator
 
     private List<(ExclusionRule, TextSpan)> MaterializeExclusions(IEnumerable<ExclusionRule> exclusions, MatchContext ctx)
     {
+        PerfCounters.IncrementExclusionMaterializations();
         var result = new List<(ExclusionRule, TextSpan)>();
         foreach (var ex in exclusions)
         {

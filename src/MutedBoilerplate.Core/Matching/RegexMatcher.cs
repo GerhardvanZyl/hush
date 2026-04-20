@@ -15,10 +15,8 @@ public sealed class RegexMatcher : IRuleMatcher
         var pattern = rule.Pattern.Regex;
         if (string.IsNullOrEmpty(pattern)) yield break;
 
-        var regex = new Regex(pattern!,
-            RegexOptions.Multiline | RegexOptions.CultureInvariant);
-
-        var text = ctx.Text.ToString();
+        var regex = CompiledPatterns.GetRegex(pattern!);
+        var text = ctx.AsString();
         foreach (Match m in regex.Matches(text))
         {
             var span = TextSpan.FromBounds(m.Index, m.Index + m.Length);
@@ -42,10 +40,8 @@ public sealed class RegexExclusionMatcher : IExclusionMatcher
         var pattern = rule.Pattern.Regex;
         if (string.IsNullOrEmpty(pattern)) yield break;
 
-        var regex = new Regex(pattern!,
-            RegexOptions.Multiline | RegexOptions.CultureInvariant);
-
-        var text = ctx.Text.ToString();
+        var regex = CompiledPatterns.GetRegex(pattern!);
+        var text = ctx.AsString();
         foreach (Match m in regex.Matches(text))
         {
             yield return TextSpan.FromBounds(m.Index, m.Index + m.Length);

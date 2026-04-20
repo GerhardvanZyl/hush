@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Text;
 using System.Text.RegularExpressions;
+using MutedBoilerplate.Core.Diagnostics;
 
 namespace MutedBoilerplate.Core.Matching;
 
@@ -20,9 +21,16 @@ public static class GlobPattern
         return GetRegex(glob!).IsMatch(text);
     }
 
-    private static Regex GetRegex(string glob) =>
-        Cache.GetOrAdd(glob, g => new Regex("^(?:" + Translate(g) + ")$",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled));
+    private static Regex GetRegex(string glob)
+    {
+        if (Cache.TryGetValue(glob, out var cached)) return cached;
+        return Cache.GetOrAdd(glob, g =>
+        {
+            PerfCounters.IncrementGlobCompiles();
+            return new Regex("^(?:" + Translate(g) + ")$",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+        });
+    }
 
     private static string Translate(string glob)
     {

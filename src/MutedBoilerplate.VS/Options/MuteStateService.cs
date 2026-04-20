@@ -28,6 +28,7 @@ internal sealed class MuteStateService
         _slots = new UserSlotMap();
         AssignSlotsForCategories();
         Provider = MuteSpanProvider.CreateDefault();
+        CompiledPatterns.Warmup(_ruleSet);
     }
 
     public IMuteSpanProvider Provider { get; }
@@ -74,6 +75,7 @@ internal sealed class MuteStateService
             AssignSlotsForCategories();
             options.UserSlotMapping = _slots.Serialize();
         }
+        CompiledPatterns.Warmup(newRules);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 

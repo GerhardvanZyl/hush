@@ -1,20 +1,43 @@
+using System.Threading;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
+using MutedBoilerplate.Core.Diagnostics;
 
 namespace MutedBoilerplate.Core.Matching;
 
 public sealed class MatchContext
 {
+    private string? _textString;
+
     public MatchContext(SourceText text, SyntaxTree? tree = null, SemanticModel? semantics = null)
     {
         Text = text;
         Tree = tree;
         Semantics = semantics;
+        PerfCounters.IncrementMatchContextBuilds();
     }
 
     public SourceText Text { get; }
     public SyntaxTree? Tree { get; }
     public SemanticModel? Semantics { get; }
+
+    // Lazy, memoized materialization of the whole buffer as a string. Regex-based
+    // matchers used to allocate this once per matcher invocation (once per rule
+    // per GetSpans call). With many regex rules on a 50k-line file that dwarfed
+    // everything else. Benign race: losing thread's string is GCed immediately.
+    public string AsString()
+    {
+        var cached = _textString;
+        if (cached is not null) return cached;
+        var s = Text.ToString();
+        var prev = Interlocked.CompareExchange(ref _textString, s, null);
+        if (prev is null)
+        {
+            PerfCounters.IncrementTextStringAllocations();
+            return s;
+        }
+        return prev;
+    }
 
     public static MatchContext FromCSharp(string code)
     {
