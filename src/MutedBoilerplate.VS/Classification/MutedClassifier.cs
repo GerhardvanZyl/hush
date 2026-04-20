@@ -38,11 +38,13 @@ internal sealed class MutedClassifier : IClassifier
             var reqStart = snapshot.Start.Position;
             var reqEnd = snapshot.End.Position;
 
-            var spans = cached.Spans;
-            for (int i = 0; i < spans.Length; i++)
+            var index = cached.Index;
+            index.GetCandidateRange(reqStart, reqEnd, out var lo, out var hi);
+            for (int i = lo; i < hi; i++)
             {
-                var s = spans[i];
-                if (!Intersects(s.Span.Start, s.Span.End, reqStart, reqEnd)) continue;
+                var s = index[i];
+                // Start < reqEnd guaranteed by hi; still need End > reqStart.
+                if (s.Span.End <= reqStart) continue;
 
                 var classificationName = ResolveClassificationName(s.CategoryKey);
                 if (classificationName is null) continue;
@@ -76,9 +78,6 @@ internal sealed class MutedClassifier : IClassifier
         if (slot is null) return null;
         return Constants.UserSlotClass(slot.Value);
     }
-
-    private static bool Intersects(int aStart, int aEnd, int bStart, int bEnd) =>
-        aStart < bEnd && bStart < aEnd;
 
     private void RaiseAll()
     {

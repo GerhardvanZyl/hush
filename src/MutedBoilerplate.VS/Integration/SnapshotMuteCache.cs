@@ -73,7 +73,7 @@ internal sealed class SnapshotMuteCache
                 spans = Array.Empty<MuteSpan>();
             }
 
-            var next = new CachedResult(snapshot, stateVer, ruleVer, spans);
+            var next = new CachedResult(snapshot, stateVer, ruleVer, spans, MuteSpanIndex.Build(spans));
             _current = next;
             return next;
         }
@@ -106,17 +106,19 @@ internal sealed class SnapshotMuteCache
 
     internal sealed class CachedResult
     {
-        public CachedResult(ITextSnapshot snapshot, int stateVersion, int ruleSetVersion, MuteSpan[] spans)
+        public CachedResult(ITextSnapshot snapshot, int stateVersion, int ruleSetVersion, MuteSpan[] spans, MuteSpanIndex index)
         {
             Snapshot = snapshot;
             StateVersion = stateVersion;
             RuleSetVersion = ruleSetVersion;
             Spans = spans;
+            Index = index;
         }
 
         public ITextSnapshot Snapshot { get; }
         public int StateVersion { get; }
         public int RuleSetVersion { get; }
         public MuteSpan[] Spans { get; }
+        public MuteSpanIndex Index { get; }
     }
 }

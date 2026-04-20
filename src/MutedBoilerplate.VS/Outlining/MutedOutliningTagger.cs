@@ -33,28 +33,40 @@ internal sealed class MutedOutliningTagger : ITagger<IOutliningRegionTag>
         catch { yield break; }
 
         var snap = cached.Snapshot;
-        var requested = new SnapshotSpan(snap, 0, snap.Length);
         var ruleSet = _state.RuleSet;
-        var muteSpans = cached.Spans;
+        var index = cached.Index;
 
-        for (int i = 0; i < muteSpans.Length; i++)
+        // Phase 4: honor the requested span set. Previously this tagger computed
+        // over the whole buffer (requested = [0..snap.Length)); the `spans`
+        // parameter was ignored. For large files the editor only asks about a
+        // few visible regions at a time — iterate each and use the interval
+        // index to bound the scan.
+        for (int sp = 0; sp < spans.Count; sp++)
         {
-            var s = muteSpans[i];
-            var style = ruleSet.StyleFor(s.CategoryKey);
-            if (!style.AutoCollapse) continue;
+            var requested = spans[sp];
+            var reqStart = requested.Start.Position;
+            var reqEnd = requested.End.Position;
+            index.GetCandidateRange(reqStart, reqEnd, out var lo, out var hi);
 
-            var start = Math.Max(0, Math.Min(s.Span.Start, snap.Length));
-            var end = Math.Max(start, Math.Min(s.Span.End, snap.Length));
-            if (end <= start) continue;
+            for (int i = lo; i < hi; i++)
+            {
+                var s = index[i];
+                if (s.Span.End <= reqStart) continue;
 
-            var span = new SnapshotSpan(snap, start, end - start);
-            if (!requested.IntersectsWith(span)) continue;
+                var style = ruleSet.StyleFor(s.CategoryKey);
+                if (!style.AutoCollapse) continue;
 
-            var collapsed = $"...{s.CategoryKey}...";
-            yield return new TagSpan<IOutliningRegionTag>(
-                span,
-                new OutliningRegionTag(isDefaultCollapsed: true, isImplementation: false,
-                    collapsedForm: collapsed, collapsedHintForm: span.GetText()));
+                var start = Math.Max(0, Math.Min(s.Span.Start, snap.Length));
+                var end = Math.Max(start, Math.Min(s.Span.End, snap.Length));
+                if (end <= start) continue;
+
+                var span = new SnapshotSpan(snap, start, end - start);
+                var collapsed = $"...{s.CategoryKey}...";
+                yield return new TagSpan<IOutliningRegionTag>(
+                    span,
+                    new OutliningRegionTag(isDefaultCollapsed: true, isImplementation: false,
+                        collapsedForm: collapsed, collapsedHintForm: span.GetText()));
+            }
         }
     }
 
