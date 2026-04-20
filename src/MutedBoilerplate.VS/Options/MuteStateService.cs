@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.Composition;
 using System.IO;
 using System.Threading;
@@ -22,6 +23,8 @@ internal sealed class MuteStateService
     private UserSlotMap _slots;
     private int _stateVersion;
     private int _ruleSetVersion;
+    // Phase 8: avoid `$"...{CategoryKey}..."` allocation per outlining tag.
+    private Dictionary<string, string> _collapsedForms = new(StringComparer.OrdinalIgnoreCase);
 
     public MuteStateService()
     {
@@ -32,6 +35,7 @@ internal sealed class MuteStateService
         AssignSlotsForCategories();
         Provider = MuteSpanProvider.CreateDefault();
         CompiledPatterns.Warmup(_ruleSet);
+        BuildCollapsedForms(_ruleSet);
     }
 
     public IMuteSpanProvider Provider { get; }
@@ -110,7 +114,24 @@ internal sealed class MuteStateService
         Interlocked.Increment(ref _ruleSetVersion);
         Interlocked.Increment(ref _stateVersion);
         CompiledPatterns.Warmup(newRules);
+        BuildCollapsedForms(newRules);
         RaiseChanged(null);
+    }
+
+    public string GetCollapsedForm(string categoryKey)
+    {
+        var forms = _collapsedForms;
+        return forms.TryGetValue(categoryKey, out var s) ? s : "...";
+    }
+
+    private void BuildCollapsedForms(RuleSet rs)
+    {
+        var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var cat in rs.AllCategories())
+        {
+            dict[cat.Key] = "..." + cat.Key + "...";
+        }
+        _collapsedForms = dict;
     }
 
     private void AssignSlotsForCategories()

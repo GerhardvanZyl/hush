@@ -116,11 +116,16 @@ internal sealed class MutedOutliningTagger : ITagger<IOutliningRegionTag>
                 if (end <= start) continue;
 
                 var span = new SnapshotSpan(snap, start, end - start);
-                var collapsed = $"...{s.CategoryKey}...";
+                // Phase 8: collapsed form comes from a precomputed per-category
+                // cache — no per-tag allocation. The hint form used to be
+                // span.GetText(), which allocated the whole collapsed region's
+                // text per tag emission. Reusing the collapsed form as the
+                // hint trades a subtler hover preview for zero allocation.
+                var collapsed = _state.GetCollapsedForm(s.CategoryKey);
                 yield return new TagSpan<IOutliningRegionTag>(
                     span,
                     new OutliningRegionTag(isDefaultCollapsed: true, isImplementation: false,
-                        collapsedForm: collapsed, collapsedHintForm: span.GetText()));
+                        collapsedForm: collapsed, collapsedHintForm: collapsed));
             }
         }
     }

@@ -82,6 +82,32 @@ public sealed class RuleSet
     /// </summary>
     public void NormalizeCategories()
     {
+        // Phase 8: intern in place so every MuteSpan emitted from these rules
+        // shares one string reference per category/rule name rather than a
+        // fresh copy per JSON deserialization.
+        foreach (var cat in Categories)
+        {
+            cat.Key = RuleStringInterner.Intern(cat.Key);
+        }
+        foreach (var rule in Rules)
+        {
+            rule.Category = RuleStringInterner.Intern(rule.Category);
+            rule.Name = RuleStringInterner.Intern(rule.Name);
+            if (rule.Excludes != null)
+            {
+                foreach (var ex in rule.Excludes)
+                {
+                    ex.Name = RuleStringInterner.Intern(ex.Name);
+                    ex.AppliesTo = RuleStringInterner.Intern(ex.AppliesTo);
+                }
+            }
+        }
+        foreach (var ex in Exclusions)
+        {
+            ex.Name = RuleStringInterner.Intern(ex.Name);
+            ex.AppliesTo = RuleStringInterner.Intern(ex.AppliesTo);
+        }
+
         var existing = new HashSet<string>(
             Categories.Select(c => c.Key),
             StringComparer.OrdinalIgnoreCase);
