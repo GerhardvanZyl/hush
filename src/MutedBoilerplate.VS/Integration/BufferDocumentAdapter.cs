@@ -13,9 +13,11 @@ namespace MutedBoilerplate.VS.Integration;
 /// </summary>
 internal static class BufferDocumentAdapter
 {
-    public static MatchContext Build(ITextBuffer buffer)
+    public static MatchContext Build(ITextBuffer buffer) =>
+        Build(buffer, buffer.CurrentSnapshot);
+
+    public static MatchContext Build(ITextBuffer buffer, ITextSnapshot snapshot)
     {
-        var snapshot = buffer.CurrentSnapshot;
         var sourceText = snapshot.AsText();
 
         var workspace = TryGetWorkspace(buffer);

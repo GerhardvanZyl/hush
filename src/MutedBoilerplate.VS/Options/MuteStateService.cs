@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel.Composition;
 using System.IO;
+using System.Threading;
 using MutedBoilerplate.Core.Matching;
 using MutedBoilerplate.Core.Model;
 using MutedBoilerplate.Core.Rules;
@@ -19,6 +20,8 @@ internal sealed class MuteStateService
     private RuleSet _ruleSet;
     private MuteState _state;
     private UserSlotMap _slots;
+    private int _stateVersion;
+    private int _ruleSetVersion;
 
     public MuteStateService()
     {
@@ -39,21 +42,30 @@ internal sealed class MuteStateService
     public MuteState State { get { lock (_gate) return _state; } }
     public UserSlotMap Slots { get { lock (_gate) return _slots; } }
 
+    // Monotonic version counters. SnapshotMuteCache keys its memoized results on
+    // (snapshot, stateVersion, ruleSetVersion) — any bump here invalidates caches
+    // without the cache needing to subscribe to Changed events.
+    public int StateVersion => Volatile.Read(ref _stateVersion);
+    public int RuleSetVersion => Volatile.Read(ref _ruleSetVersion);
+
     public void Toggle(string categoryKey)
     {
         lock (_gate) _state.Toggle(categoryKey);
+        Interlocked.Increment(ref _stateVersion);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
     public void ToggleAll()
     {
         lock (_gate) _state.ToggleAll();
+        Interlocked.Increment(ref _stateVersion);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
     public void ToggleExclusions()
     {
         lock (_gate) _state.ToggleExclusions();
+        Interlocked.Increment(ref _stateVersion);
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
@@ -75,6 +87,8 @@ internal sealed class MuteStateService
             AssignSlotsForCategories();
             options.UserSlotMapping = _slots.Serialize();
         }
+        Interlocked.Increment(ref _ruleSetVersion);
+        Interlocked.Increment(ref _stateVersion);
         CompiledPatterns.Warmup(newRules);
         Changed?.Invoke(this, EventArgs.Empty);
     }

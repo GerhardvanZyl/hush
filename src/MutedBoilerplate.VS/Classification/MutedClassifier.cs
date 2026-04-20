@@ -13,12 +13,14 @@ internal sealed class MutedClassifier : IClassifier
     private readonly ITextBuffer _buffer;
     private readonly IClassificationTypeRegistryService _registry;
     private readonly MuteStateService _state;
+    private readonly SnapshotMuteCache _cache;
 
     public MutedClassifier(ITextBuffer buffer, IClassificationTypeRegistryService registry, MuteStateService state)
     {
         _buffer = buffer;
         _registry = registry;
         _state = state;
+        _cache = SnapshotMuteCache.For(buffer, state);
 
         _buffer.Changed += (_, _) => RaiseAll();
         _state.Changed += (_, _) => RaiseAll();
@@ -31,12 +33,16 @@ internal sealed class MutedClassifier : IClassifier
         var result = new List<ClassificationSpan>();
         try
         {
-            var ctx = BufferDocumentAdapter.Build(_buffer);
-            var muteSpans = _state.Provider.GetSpans(ctx, _state.State, _state.RuleSet);
+            var cached = _cache.Get();
+            var bufferSnapshot = cached.Snapshot;
+            var reqStart = snapshot.Start.Position;
+            var reqEnd = snapshot.End.Position;
 
-            foreach (var s in muteSpans)
+            var spans = cached.Spans;
+            for (int i = 0; i < spans.Length; i++)
             {
-                if (!Intersects(s.Span.Start, s.Span.End, snapshot.Start, snapshot.End)) continue;
+                var s = spans[i];
+                if (!Intersects(s.Span.Start, s.Span.End, reqStart, reqEnd)) continue;
 
                 var classificationName = ResolveClassificationName(s.CategoryKey);
                 if (classificationName is null) continue;
@@ -44,7 +50,6 @@ internal sealed class MutedClassifier : IClassifier
                 var ct = _registry.GetClassificationType(classificationName);
                 if (ct is null) continue;
 
-                var bufferSnapshot = _buffer.CurrentSnapshot;
                 var start = Math.Max(0, Math.Min(s.Span.Start, bufferSnapshot.Length));
                 var end = Math.Max(start, Math.Min(s.Span.End, bufferSnapshot.Length));
                 if (end <= start) continue;

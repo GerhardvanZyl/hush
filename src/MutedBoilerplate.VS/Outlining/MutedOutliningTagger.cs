@@ -11,11 +11,13 @@ internal sealed class MutedOutliningTagger : ITagger<IOutliningRegionTag>
 {
     private readonly ITextBuffer _buffer;
     private readonly MuteStateService _state;
+    private readonly SnapshotMuteCache _cache;
 
     public MutedOutliningTagger(ITextBuffer buffer, MuteStateService state)
     {
         _buffer = buffer;
         _state = state;
+        _cache = SnapshotMuteCache.For(buffer, state);
         _buffer.Changed += (_, _) => RaiseAll();
         _state.Changed += (_, _) => RaiseAll();
     }
@@ -26,17 +28,19 @@ internal sealed class MutedOutliningTagger : ITagger<IOutliningRegionTag>
     {
         if (spans.Count == 0) yield break;
 
-        MutedBoilerplate.Core.Matching.MatchContext ctx;
-        try { ctx = BufferDocumentAdapter.Build(_buffer); }
+        SnapshotMuteCache.CachedResult cached;
+        try { cached = _cache.Get(); }
         catch { yield break; }
 
-        var muteSpans = _state.Provider.GetSpans(ctx, _state.State, _state.RuleSet);
-        var snap = _buffer.CurrentSnapshot;
+        var snap = cached.Snapshot;
         var requested = new SnapshotSpan(snap, 0, snap.Length);
+        var ruleSet = _state.RuleSet;
+        var muteSpans = cached.Spans;
 
-        foreach (var s in muteSpans)
+        for (int i = 0; i < muteSpans.Length; i++)
         {
-            var style = _state.RuleSet.StyleFor(s.CategoryKey);
+            var s = muteSpans[i];
+            var style = ruleSet.StyleFor(s.CategoryKey);
             if (!style.AutoCollapse) continue;
 
             var start = Math.Max(0, Math.Min(s.Span.Start, snap.Length));
