@@ -1,0 +1,106 @@
+{
+  "categories": [
+    {
+      "key": "telemetry",
+      "displayName": "Telemetry"
+    },
+    {
+      "key": "logging",
+      "displayName": "Logging"
+    },
+    {
+      "key": "signature",
+      "displayName": "Signature"
+    }
+  ],
+  "rules": [
+    {
+      "name": "appinsights-telemetry-client",
+      "category": "telemetry",
+      "kind": "roslynCall",
+      "pattern": {
+        "receiverTypeGlob": "TelemetryClient",
+        "methodNameGlob": "Track*"
+      },
+      "scope": "wholeStatement"
+    },
+    {
+      "name": "diagnostic-activity",
+      "category": "telemetry",
+      "kind": "roslynCall",
+      "pattern": {
+        "receiverTypeGlob": "Activity",
+        "methodNameGlob": "AddTag|AddEvent|SetTag|SetStatus"
+      },
+      "scope": "wholeStatement"
+    },
+    {
+      "name": "metrics-meter",
+      "category": "telemetry",
+      "kind": "roslynCall",
+      "pattern": {
+        "receiverTypeGlob": "IMeter*|Counter*|Histogram*|Gauge*",
+        "methodNameGlob": "RecordMeasurement|Add|Record"
+      },
+      "scope": "wholeStatement"
+    },
+    {
+      "name": "ilogger-log",
+      "category": "logging",
+      "kind": "roslynCall",
+      "pattern": {
+        "receiverTypeGlob": "ILogger*",
+        "methodNameGlob": "Log*"
+      },
+      "scope": "wholeStatement"
+    },
+    {
+      "name": "logger-extensions",
+      "category": "logging",
+      "kind": "roslynCall",
+      "pattern": {
+        "receiverTypeGlob": "LoggerExtensions",
+        "methodNameGlob": "Log*"
+      },
+      "scope": "wholeStatement"
+    },
+    {
+      "name": "console-writeline",
+      "category": "logging",
+      "kind": "roslynCall",
+      "pattern": {
+        "receiverTypeGlob": "Console",
+        "methodNameGlob": "WriteLine|Write|Error.WriteLine"
+      },
+      "scope": "wholeStatement"
+    },
+    {
+      "name": "debug-trace",
+      "category": "logging",
+      "kind": "roslynCall",
+      "pattern": {
+        "receiverTypeGlob": "Debug|Trace",
+        "methodNameGlob": "WriteLine|Write|TraceInformation|TraceWarning|TraceError"
+      },
+      "scope": "wholeStatement"
+    },
+    {
+      "name": "serilog",
+      "category": "logging",
+      "kind": "roslynCall",
+      "pattern": {
+        "receiverTypeGlob": "Log|ILogger",
+        "methodNameGlob": "Verbose|Debug|Information|Warning|Error|Fatal|Write"
+      },
+      "scope": "wholeStatement"
+    },
+    {
+      "name": "method-signature",
+      "category": "signature",
+      "kind": "signature",
+      "pattern": {},
+      "scope": "signatureRange"
+    }
+  ],
+  "exclusions": []
+}

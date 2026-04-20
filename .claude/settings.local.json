@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(dotnet --version)",
+      "Bash(dotnet --list-sdks)",
+      "Bash(where msbuild *)",
+      "Bash(where vswhere *)",
+      "Read(//c/Program Files \\(x86\\)/Microsoft Visual Studio/Installer/**)",
+      "Bash(\"/c/Program Files \\(x86\\)/Microsoft Visual Studio/Installer/vswhere.exe\" -latest -property installationPath)",
+      "Read(//c/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/**)",
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/MSBuild.exe\" -version)",
+      "Bash(dotnet build *)",
+      "Bash(dotnet test *)",
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/MSBuild.exe\" src/MutedBoilerplate.VS/MutedBoilerplate.VS.csproj -t:Restore -nologo -v:m)",
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/MSBuild.exe\" src/MutedBoilerplate.VS/MutedBoilerplate.VS.csproj -nologo -v:m -p:DeployExtension=false)",
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/MSBuild.exe\" src/MutedBoilerplate.VS/MutedBoilerplate.VS.csproj -t:Rebuild -nologo -v:m -p:Configuration=Release -p:DeployExtension=false)",
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/MSBuild.exe\" src/MutedBoilerplate.VS/MutedBoilerplate.VS.csproj -t:Rebuild -nologo -v:n -p:Configuration=Release -p:DeployExtension=false)",
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/MSBuild.exe\" src/MutedBoilerplate.VS/MutedBoilerplate.VS.csproj -t:Rebuild -nologo -v:m -p:Configuration=Debug -p:DeployExtension=false)",
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/18/Enterprise/MSBuild/Current/Bin/MSBuild.exe\" src/MutedBoilerplate.VS/MutedBoilerplate.VS.csproj -t:Rebuild -nologo -v:m -p:Configuration=Debug -p:DeployExtension=false)",
+      "Bash(\"/c/Program Files/Microsoft Visual Studio/18/Enterprise/MSBuild/Current/Bin/MSBuild.exe\" src/MutedBoilerplate.VS/MutedBoilerplate.VS.csproj -t:Rebuild -nologo -v:n -p:Configuration=Debug -p:DeployExtension=false)",
+      "Bash(curl -s \"https://api.nuget.org/v3-flatcontainer/microsoft.visualstudio.sdk/index.json\")"
+    ]
+  }
+}

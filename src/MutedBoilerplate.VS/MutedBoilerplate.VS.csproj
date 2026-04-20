@@ -1,0 +1,97 @@
+<!-- Explicit Sdk imports (rather than the Sdk attribute on <Project>) so that the
+     VsSDK targets Import below runs AFTER Microsoft.NET.Sdk.targets — otherwise
+     the SDK overwrites $(PrepareForRunDependsOn) and CreateVsixContainer never
+     gets hooked into the build, leaving you with a built DLL but no .vsix. -->
+<Project>
+
+  <Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk" />
+
+  <PropertyGroup>
+    <TargetFramework>net472</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <UseWindowsForms>false</UseWindowsForms>
+    <UseWPF>false</UseWPF>
+    <RootNamespace>MutedBoilerplate.VS</RootNamespace>
+    <AssemblyName>MutedBoilerplate.VS</AssemblyName>
+    <Nullable>annotations</Nullable>
+    <GeneratePkgDefFile>true</GeneratePkgDefFile>
+    <!-- Emit a CodeBase entry in the .pkgdef so VS resolves MutedBoilerplate.VS.dll
+         from the extension's installed folder instead of falling back to its own
+         IDE directory (which fails with Could not load file or assembly...). -->
+    <UseCodebase>true</UseCodebase>
+    <CreateVsixContainer>true</CreateVsixContainer>
+    <DeployExtension>true</DeployExtension>
+    <IncludeAssemblyInVSIXContainer>true</IncludeAssemblyInVSIXContainer>
+    <IncludeDebugSymbolsInVSIXContainer>true</IncludeDebugSymbolsInVSIXContainer>
+  </PropertyGroup>
+
+  <!-- VsSDK BuildTools defines its intermediate-file paths against
+       $(IntermediateOutputPath) at import time, but Microsoft.NET.Sdk doesn't
+       populate that property until after package targets evaluate. Without these
+       overrides the VSIX build writes resources.json/ctoFiles.json to the drive
+       root and fails with VSSDK1207. Pin the paths explicitly. -->
+  <PropertyGroup>
+    <_MutedVsixIntermediate>obj\$(Configuration)\$(TargetFramework)\</_MutedVsixIntermediate>
+    <FileManifest>$(_MutedVsixIntermediate)files.json</FileManifest>
+    <TemplateFileManifest>$(_MutedVsixIntermediate)templateFiles.json</TemplateFileManifest>
+    <ResourceManifest>$(_MutedVsixIntermediate)resources.json</ResourceManifest>
+    <CtoFileManifest>$(_MutedVsixIntermediate)ctoFiles.json</CtoFileManifest>
+    <CtoCacheFile>$(_MutedVsixIntermediate)mergeCto.cache</CtoCacheFile>
+    <CreateTemplateManifestsCacheFile>$(_MutedVsixIntermediate)createTemplateManifests.cache</CreateTemplateManifestsCacheFile>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
+    <StartAction>Program</StartAction>
+    <StartProgram>$(DevEnvDir)devenv.exe</StartProgram>
+    <StartArguments>/rootsuffix Exp</StartArguments>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.VisualStudio.SDK" Version="17.14.40265" ExcludeAssets="runtime" />
+    <PackageReference Include="Microsoft.VSSDK.BuildTools" Version="17.14.2142" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.VisualStudio.LanguageServices" Version="4.14.0" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System.ComponentModel.Composition" />
+    <Reference Include="System.Design" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+    <Reference Include="WindowsBase" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MutedBoilerplate.Core\MutedBoilerplate.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="source.extension.vsixmanifest">
+      <SubType>Designer</SubType>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <VSCTCompile Include="MutedBoilerplateCommands.vsct">
+      <ResourceName>Menus.ctmenu</ResourceName>
+    </VSCTCompile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Rules\DefaultRules.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+  </ItemGroup>
+
+  <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />
+
+  <!-- Must be imported AFTER Sdk.targets so the VsSDK additions to
+       $(PrepareForRunDependsOn) (CreateVsixContainer, DeployVsixExtensionFiles,
+       etc.) survive. The auto-imported Microsoft.VSSDK.BuildTools.targets only
+       sets environment variables — the real targets live in tools/VSSDK/. -->
+  <PropertyGroup>
+    <_VsSdkBuildToolsTargets>$(NuGetPackageRoot)microsoft.vssdk.buildtools\17.14.2142\tools\VSSDK\Microsoft.VsSDK.targets</_VsSdkBuildToolsTargets>
+  </PropertyGroup>
+  <Import Project="$(_VsSdkBuildToolsTargets)" Condition="Exists('$(_VsSdkBuildToolsTargets)')" />
+
+</Project>
