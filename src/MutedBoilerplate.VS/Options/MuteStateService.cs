@@ -36,7 +36,14 @@ internal sealed class MuteStateService
 
     public IMuteSpanProvider Provider { get; }
 
-    public event EventHandler? Changed;
+    public event EventHandler<MuteStateChangedEventArgs>? Changed;
+
+    private void RaiseChanged(string? categoryKey)
+    {
+        Changed?.Invoke(this, categoryKey is null
+            ? MuteStateChangedEventArgs.All
+            : new MuteStateChangedEventArgs(categoryKey));
+    }
 
     public RuleSet RuleSet { get { lock (_gate) return _ruleSet; } }
     public MuteState State { get { lock (_gate) return _state; } }
@@ -52,21 +59,21 @@ internal sealed class MuteStateService
     {
         lock (_gate) _state.Toggle(categoryKey);
         Interlocked.Increment(ref _stateVersion);
-        Changed?.Invoke(this, EventArgs.Empty);
+        RaiseChanged(categoryKey);
     }
 
     public void ToggleAll()
     {
         lock (_gate) _state.ToggleAll();
         Interlocked.Increment(ref _stateVersion);
-        Changed?.Invoke(this, EventArgs.Empty);
+        RaiseChanged(null);
     }
 
     public void ToggleExclusions()
     {
         lock (_gate) _state.ToggleExclusions();
         Interlocked.Increment(ref _stateVersion);
-        Changed?.Invoke(this, EventArgs.Empty);
+        RaiseChanged(null);
     }
 
     public void ToggleUserSlot(int slot)
@@ -90,7 +97,7 @@ internal sealed class MuteStateService
         Interlocked.Increment(ref _ruleSetVersion);
         Interlocked.Increment(ref _stateVersion);
         CompiledPatterns.Warmup(newRules);
-        Changed?.Invoke(this, EventArgs.Empty);
+        RaiseChanged(null);
     }
 
     private void AssignSlotsForCategories()

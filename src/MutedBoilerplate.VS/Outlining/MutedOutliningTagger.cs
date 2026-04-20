@@ -19,7 +19,61 @@ internal sealed class MutedOutliningTagger : ITagger<IOutliningRegionTag>
         _state = state;
         _cache = SnapshotMuteCache.For(buffer, state);
         _buffer.Changed += (_, _) => RaiseAll();
-        _state.Changed += (_, _) => RaiseAll();
+        _state.Changed += OnStateChanged;
+    }
+
+    private void OnStateChanged(object? sender, MuteStateChangedEventArgs e)
+    {
+        // Phase 7: outlining regions only appear for AutoCollapse categories.
+        // If the toggled category isn't AutoCollapse, nothing in the outliner
+        // changes. For AutoCollapse categories we still need to reraise over
+        // the affected spans so VS refreshes the outlining adornments.
+        if (e.AffectsAllCategories)
+        {
+            RaiseAll();
+            return;
+        }
+
+        if (!_state.RuleSet.StyleFor(e.CategoryKey!).AutoCollapse) return;
+
+        var cached = _cache.TryPeekCurrent();
+        if (cached is null || cached.Spans.Length == 0)
+        {
+            RaiseAll();
+            return;
+        }
+
+        var handler = TagsChanged;
+        if (handler is null) return;
+
+        var snap = cached.Snapshot;
+        var spans = cached.Spans;
+        int runStart = -1;
+        int runEnd = -1;
+        for (int i = 0; i < spans.Length; i++)
+        {
+            var s = spans[i];
+            if (!string.Equals(s.CategoryKey, e.CategoryKey, StringComparison.OrdinalIgnoreCase)) continue;
+            var ss = s.Span.Start;
+            var se = s.Span.End;
+            if (runStart < 0) { runStart = ss; runEnd = se; continue; }
+            if (ss <= runEnd) { if (se > runEnd) runEnd = se; }
+            else
+            {
+                FireRange(handler, snap, runStart, runEnd);
+                runStart = ss;
+                runEnd = se;
+            }
+        }
+        if (runStart >= 0) FireRange(handler, snap, runStart, runEnd);
+    }
+
+    private void FireRange(EventHandler<SnapshotSpanEventArgs> handler, ITextSnapshot snap, int start, int end)
+    {
+        var s = Math.Max(0, Math.Min(start, snap.Length));
+        var e = Math.Max(s, Math.Min(end, snap.Length));
+        if (e <= s) return;
+        handler(this, new SnapshotSpanEventArgs(new SnapshotSpan(snap, s, e - s)));
     }
 
     public event EventHandler<SnapshotSpanEventArgs>? TagsChanged;

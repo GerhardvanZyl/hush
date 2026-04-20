@@ -23,7 +23,7 @@ internal sealed class MutedClassifier : IClassifier
         _cache = SnapshotMuteCache.For(buffer, state);
 
         _buffer.Changed += (_, _) => RaiseAll();
-        _state.Changed += (_, _) => RaiseAll();
+        _state.Changed += OnStateChanged;
     }
 
     public event EventHandler<ClassificationChangedEventArgs>? ClassificationChanged;
@@ -43,7 +43,6 @@ internal sealed class MutedClassifier : IClassifier
             for (int i = lo; i < hi; i++)
             {
                 var s = index[i];
-                // Start < reqEnd guaranteed by hi; still need End > reqStart.
                 if (s.Span.End <= reqStart) continue;
 
                 var classificationName = ResolveClassificationName(s.CategoryKey);
@@ -77,6 +76,87 @@ internal sealed class MutedClassifier : IClassifier
         var slot = _state.Slots.Get(categoryKey);
         if (slot is null) return null;
         return Constants.UserSlotClass(slot.Value);
+    }
+
+    // Phase 7: a single-category toggle only changes spans of that category.
+    // Raise ClassificationChanged for each contiguous run of that category's
+    // spans in the pre-toggle cache (which still sits in _cache._current
+    // because Get() hasn't been called yet on the new stateVersion). Whole-
+    // buffer invalidation is still used for buffer edits, ToggleAll,
+    // ToggleExclusions, and RuleSet reloads.
+    private void OnStateChanged(object? sender, MuteStateChangedEventArgs e)
+    {
+        if (e.AffectsAllCategories)
+        {
+            RaiseAll();
+            return;
+        }
+
+        var cached = _cache.TryPeekCurrent();
+        if (cached is null || cached.Spans.Length == 0)
+        {
+            RaiseAll();
+            return;
+        }
+
+        if (ResolveClassificationName(e.CategoryKey!) is null)
+        {
+            // No classification rendered for this category — nothing to invalidate.
+            return;
+        }
+
+        RaiseForCategory(cached, e.CategoryKey!);
+    }
+
+    private void RaiseForCategory(SnapshotMuteCache.CachedResult cached, string categoryKey)
+    {
+        var handler = ClassificationChanged;
+        if (handler is null) return;
+
+        var snap = cached.Snapshot;
+        var spans = cached.Spans;
+        int runStart = -1;
+        int runEnd = -1;
+
+        for (int i = 0; i < spans.Length; i++)
+        {
+            var s = spans[i];
+            if (!string.Equals(s.CategoryKey, categoryKey, StringComparison.OrdinalIgnoreCase)) continue;
+
+            var ss = s.Span.Start;
+            var se = s.Span.End;
+
+            if (runStart < 0)
+            {
+                runStart = ss;
+                runEnd = se;
+                continue;
+            }
+
+            if (ss <= runEnd)
+            {
+                if (se > runEnd) runEnd = se;
+            }
+            else
+            {
+                FireRange(handler, snap, runStart, runEnd);
+                runStart = ss;
+                runEnd = se;
+            }
+        }
+
+        if (runStart >= 0)
+            FireRange(handler, snap, runStart, runEnd);
+    }
+
+    private void FireRange(EventHandler<ClassificationChangedEventArgs> handler,
+        ITextSnapshot snap, int start, int end)
+    {
+        var clampedStart = Math.Max(0, Math.Min(start, snap.Length));
+        var clampedEnd = Math.Max(clampedStart, Math.Min(end, snap.Length));
+        if (clampedEnd <= clampedStart) return;
+        handler(this, new ClassificationChangedEventArgs(
+            new SnapshotSpan(snap, clampedStart, clampedEnd - clampedStart)));
     }
 
     private void RaiseAll()

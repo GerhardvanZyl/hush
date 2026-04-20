@@ -36,6 +36,11 @@ internal sealed class SnapshotMuteCache
             typeof(SnapshotMuteCache),
             () => new SnapshotMuteCache(buffer, state));
 
+    // Returns whatever is currently cached without triggering a recompute.
+    // Used by Phase-7 granular invalidation to inspect the pre-toggle spans
+    // so it can raise a narrow change event for the affected category.
+    public CachedResult? TryPeekCurrent() => _current;
+
     public CachedResult Get()
     {
         var snapshot = _buffer.CurrentSnapshot;
