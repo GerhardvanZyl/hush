@@ -24,6 +24,7 @@ internal sealed class MutedClassifier : IClassifier
 
         _buffer.Changed += (_, _) => RaiseAll();
         _state.Changed += OnStateChanged;
+        _cache.ResultUpdated += (_, _) => RaiseAll();
     }
 
     public event EventHandler<ClassificationChangedEventArgs>? ClassificationChanged;

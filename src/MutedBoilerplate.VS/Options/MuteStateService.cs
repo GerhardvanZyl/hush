@@ -55,6 +55,19 @@ internal sealed class MuteStateService
     public int StateVersion => Volatile.Read(ref _stateVersion);
     public int RuleSetVersion => Volatile.Read(ref _ruleSetVersion);
 
+    // Phase 6: atomically capture an immutable view of the state for
+    // off-UI-thread compute. MuteState._enabled is a mutable Dictionary, so
+    // background walks would race with Toggle otherwise. MuteState.Snapshot()
+    // copies the dict under our gate; the returned MuteState owns its own copy.
+    public MuteStateSnapshot Capture()
+    {
+        lock (_gate)
+        {
+            var copy = new MuteState(_state.Snapshot(), _state.ExclusionsEnabled);
+            return new MuteStateSnapshot(copy, _ruleSet, _stateVersion, _ruleSetVersion);
+        }
+    }
+
     public void Toggle(string categoryKey)
     {
         lock (_gate) _state.Toggle(categoryKey);

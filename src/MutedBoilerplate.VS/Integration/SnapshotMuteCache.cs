@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.VisualStudio.Text;
 using MutedBoilerplate.Core.Diagnostics;
 using MutedBoilerplate.Core.Matching;
@@ -8,22 +10,25 @@ using MutedBoilerplate.VS.Options;
 
 namespace MutedBoilerplate.VS.Integration;
 
-// Phase 1: memoize the full (MatchContext + MuteSpan list) result per
-// (snapshot, stateVersion, ruleSetVersion). The classifier and outlining tagger
-// both look it up via Get(buffer, state) so they stop duplicating the entire
-// pipeline. Cache entries are per-buffer — one instance per ITextBuffer,
-// pinned via the buffer's Properties bag.
+// Phase 1 + 6: memoize the full (MatchContext + MuteSpan list) result per
+// (snapshot, stateVersion, ruleSetVersion), computed on the ThreadPool.
 //
-// Thread-safety: `_current` is a reference assignment (atomic on all .NET
-// runtimes we target). The compute path is guarded by `_gate` so two threads
-// asking for the same snapshot don't both walk the tree; later arrivals block
-// briefly on the lock and then see the cached result.
+// Get() never blocks the UI thread:
+//   * fresh cache → atomic read, return immediately
+//   * stale cache → return the stale result AND schedule a background
+//                   recompute; ResultUpdated fires when it completes
+//   * no cache yet → return an empty placeholder anchored on the requested
+//                    snapshot, schedule recompute, same event
+//
+// One compute is in flight at a time (`_computing` CAS flag). If state or
+// buffer moves during a compute, the result is installed anyway; Get()
+// will see it as stale on the next UI pass and schedule another compute.
 internal sealed class SnapshotMuteCache
 {
     private readonly ITextBuffer _buffer;
     private readonly MuteStateService _state;
-    private readonly object _gate = new();
     private CachedResult? _current;
+    private int _computing; // 0 = idle, 1 = background compute in flight
 
     public SnapshotMuteCache(ITextBuffer buffer, MuteStateService state)
     {
@@ -36,10 +41,12 @@ internal sealed class SnapshotMuteCache
             typeof(SnapshotMuteCache),
             () => new SnapshotMuteCache(buffer, state));
 
-    // Returns whatever is currently cached without triggering a recompute.
-    // Used by Phase-7 granular invalidation to inspect the pre-toggle spans
-    // so it can raise a narrow change event for the affected category.
-    public CachedResult? TryPeekCurrent() => _current;
+    // Fires when a background compute finishes and _current is swapped.
+    // Classifier and tagger raise their own change events on receipt so
+    // VS re-requests classification over the new data.
+    public event EventHandler? ResultUpdated;
+
+    public CachedResult? TryPeekCurrent() => Volatile.Read(ref _current);
 
     public CachedResult Get()
     {
@@ -47,41 +54,63 @@ internal sealed class SnapshotMuteCache
         var stateVer = _state.StateVersion;
         var ruleVer = _state.RuleSetVersion;
 
-        var cached = _current;
+        var cached = Volatile.Read(ref _current);
         if (IsFresh(cached, snapshot, stateVer, ruleVer))
         {
             PerfCounters.IncrementSnapshotCacheHits();
             return cached!;
         }
 
-        lock (_gate)
+        // Stale or missing — schedule a background compute but don't block.
+        ScheduleCompute();
+
+        if (cached is not null) return cached;
+
+        // First call, nothing cached yet. Return an empty placeholder anchored
+        // on the requested snapshot so VS still gets a valid span list. The
+        // ResultUpdated event will prompt a reclassify once real data is ready.
+        return new CachedResult(snapshot, stateVer, ruleVer,
+            Array.Empty<MuteSpan>(), MuteSpanIndex.Empty);
+    }
+
+    private void ScheduleCompute()
+    {
+        if (Interlocked.CompareExchange(ref _computing, 1, 0) != 0) return;
+        Task.Run(() =>
         {
-            cached = _current;
-            if (IsFresh(cached, snapshot, stateVer, ruleVer))
-            {
-                PerfCounters.IncrementSnapshotCacheHits();
-                return cached!;
-            }
+            try { RunCompute(); }
+            finally { Volatile.Write(ref _computing, 0); }
+        });
+    }
 
-            MuteSpan[] spans;
-            try
-            {
-                var ctx = BufferDocumentAdapter.Build(_buffer, snapshot);
-                var list = _state.Provider.GetSpans(ctx, _state.State, _state.RuleSet);
-                spans = ToSortedArray(list);
-            }
-            catch
-            {
-                // Parse failure, transient Roslyn issue, etc. Cache the empty
-                // result against this snapshot so we don't hammer the tree on
-                // every repaint until the next edit bumps the snapshot.
-                spans = Array.Empty<MuteSpan>();
-            }
+    private void RunCompute()
+    {
+        var snapshot = _buffer.CurrentSnapshot;
+        var captured = _state.Capture();
 
-            var next = new CachedResult(snapshot, stateVer, ruleVer, spans, MuteSpanIndex.Build(spans));
-            _current = next;
-            return next;
+        MuteSpan[] spans;
+        try
+        {
+            var ctx = BufferDocumentAdapter.Build(_buffer, snapshot);
+            var list = _state.Provider.GetSpans(ctx, captured.State, captured.RuleSet);
+            spans = ToSortedArray(list);
         }
+        catch
+        {
+            // Parse failure, transient Roslyn issue, etc. Install an empty
+            // result so Get() doesn't keep triggering the same failure.
+            spans = Array.Empty<MuteSpan>();
+        }
+
+        var next = new CachedResult(
+            snapshot,
+            captured.StateVersion,
+            captured.RuleSetVersion,
+            spans,
+            MuteSpanIndex.Build(spans));
+
+        Volatile.Write(ref _current, next);
+        ResultUpdated?.Invoke(this, EventArgs.Empty);
     }
 
     private static bool IsFresh(CachedResult? c, ITextSnapshot snap, int stateVer, int ruleVer) =>

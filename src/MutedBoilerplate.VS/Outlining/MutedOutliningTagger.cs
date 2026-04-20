@@ -20,6 +20,7 @@ internal sealed class MutedOutliningTagger : ITagger<IOutliningRegionTag>
         _cache = SnapshotMuteCache.For(buffer, state);
         _buffer.Changed += (_, _) => RaiseAll();
         _state.Changed += OnStateChanged;
+        _cache.ResultUpdated += (_, _) => RaiseAll();
     }
 
     private void OnStateChanged(object? sender, MuteStateChangedEventArgs e)
