@@ -13,6 +13,7 @@ internal static class MutedBoilerplateCommands
         Bind(svc, Constants.CmdToggleTelemetry, () => state.Toggle(MuteCategory.TelemetryKey));
         Bind(svc, Constants.CmdToggleLogging,   () => state.Toggle(MuteCategory.LoggingKey));
         Bind(svc, Constants.CmdToggleSignature, () => state.Toggle(MuteCategory.SignatureKey));
+        Bind(svc, Constants.CmdToggleGuards,    () => state.Toggle(MuteCategory.GuardsKey));
         Bind(svc, Constants.CmdToggleAll,        state.ToggleAll);
         Bind(svc, Constants.CmdToggleExclusions, state.ToggleExclusions);
         for (int slot = 1; slot <= Constants.UserSlotCount; slot++)

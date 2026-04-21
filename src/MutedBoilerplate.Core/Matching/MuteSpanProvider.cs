@@ -29,6 +29,7 @@ public sealed class MuteSpanProvider : IMuteSpanProvider
             new SignatureMatcher(),
             new RegexMatcher(),
             new IdentifierMatcher(),
+            new GuardMatcher(),
         },
         new IExclusionMatcher[]
         {
@@ -57,6 +58,7 @@ public sealed class MuteSpanProvider : IMuteSpanProvider
         List<MuteRule>? callRules = null;
         List<MuteRule>? identifierRules = null;
         List<MuteRule>? signatureRules = null;
+        List<MuteRule>? guardRules = null;
         List<MuteRule>? otherRules = null;
         var anyLocalExcludes = false;
 
@@ -70,6 +72,7 @@ public sealed class MuteSpanProvider : IMuteSpanProvider
                 case RuleKind.RoslynCall: (callRules ??= new()).Add(rule); break;
                 case RuleKind.Identifier: (identifierRules ??= new()).Add(rule); break;
                 case RuleKind.Signature: (signatureRules ??= new()).Add(rule); break;
+                case RuleKind.Guard: (guardRules ??= new()).Add(rule); break;
                 default: (otherRules ??= new()).Add(rule); break;
             }
         }
@@ -105,6 +108,7 @@ public sealed class MuteSpanProvider : IMuteSpanProvider
                 (callRules?.Count ?? 0) > 0 ||
                 (identifierRules?.Count ?? 0) > 0 ||
                 (signatureRules?.Count ?? 0) > 0 ||
+                (guardRules?.Count ?? 0) > 0 ||
                 (callExclusions?.Count ?? 0) > 0 ||
                 (idExclusions?.Count ?? 0) > 0;
 
@@ -118,6 +122,7 @@ public sealed class MuteSpanProvider : IMuteSpanProvider
                     (IReadOnlyList<MuteRule>?)callRules ?? Array.Empty<MuteRule>(),
                     (IReadOnlyList<MuteRule>?)identifierRules ?? Array.Empty<MuteRule>(),
                     (IReadOnlyList<MuteRule>?)signatureRules ?? Array.Empty<MuteRule>(),
+                    (IReadOnlyList<MuteRule>?)guardRules ?? Array.Empty<MuteRule>(),
                     ctx.Semantics,
                     candidates,
                     callExclusions,

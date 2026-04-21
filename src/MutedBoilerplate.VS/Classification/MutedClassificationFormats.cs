@@ -68,6 +68,22 @@ internal sealed class MutedSignatureFormat : ClassificationFormatDefinition
     }
 }
 
+[Export(typeof(EditorFormatDefinition))]
+[ClassificationType(ClassificationTypeNames = Constants.ClassGuards)]
+[Name(Constants.ClassGuards)]
+[UserVisible(true)]
+[Order(After = Priority.High)]
+internal sealed class MutedGuardsFormat : ClassificationFormatDefinition
+{
+    public MutedGuardsFormat()
+    {
+        DisplayName = "Muted Guards";
+        ForegroundColor = MuteColors.Parse("#7F8A7A");
+        ForegroundOpacity = 0.55;
+        IsItalic = true;
+    }
+}
+
 internal abstract class MutedUserSlotFormatBase : ClassificationFormatDefinition
 {
     protected MutedUserSlotFormatBase(int slot)

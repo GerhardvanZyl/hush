@@ -73,6 +73,7 @@ internal sealed class MutedClassifier : IClassifier
         if (categoryKey == MuteCategory.TelemetryKey) return Constants.ClassTelemetry;
         if (categoryKey == MuteCategory.LoggingKey) return Constants.ClassLogging;
         if (categoryKey == MuteCategory.SignatureKey) return Constants.ClassSignature;
+        if (categoryKey == MuteCategory.GuardsKey) return Constants.ClassGuards;
 
         var slot = _state.Slots.Get(categoryKey);
         if (slot is null) return null;

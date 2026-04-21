@@ -16,6 +16,7 @@ internal static class Constants
     public const int CmdToggleSignature = 0x0102;
     public const int CmdToggleAll       = 0x0103;
     public const int CmdToggleExclusions = 0x0104;
+    public const int CmdToggleGuards    = 0x0105;
     public const int CmdToggleUser1     = 0x0110;
     public const int CmdToggleUser2     = 0x0111;
     public const int CmdToggleUser3     = 0x0112;
@@ -35,5 +36,6 @@ internal static class Constants
     public const string ClassTelemetry = "muted.telemetry";
     public const string ClassLogging = "muted.logging";
     public const string ClassSignature = "muted.signature";
+    public const string ClassGuards = "muted.guards";
     public static string UserSlotClass(int slot) => $"muted.user{slot}";
 }

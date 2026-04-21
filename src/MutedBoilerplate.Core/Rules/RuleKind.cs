@@ -6,4 +6,5 @@ public static class RuleKind
     public const string Signature = "signature";
     public const string Regex = "regex";
     public const string Identifier = "identifier";
+    public const string Guard = "guard";
 }

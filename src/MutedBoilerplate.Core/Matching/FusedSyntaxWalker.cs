@@ -22,6 +22,7 @@ internal sealed class FusedSyntaxWalker : CSharpSyntaxWalker
     private readonly IReadOnlyList<MuteRule> _callRules;
     private readonly IReadOnlyList<MuteRule> _identifierRules;
     private readonly IReadOnlyList<MuteRule> _signatureRules;
+    private readonly IReadOnlyList<MuteRule> _guardRules;
     private readonly SemanticModel? _semantics;
     private readonly List<(MuteRule, MuteSpan)> _spanOutput;
 
@@ -34,6 +35,7 @@ internal sealed class FusedSyntaxWalker : CSharpSyntaxWalker
         IReadOnlyList<MuteRule> callRules,
         IReadOnlyList<MuteRule> identifierRules,
         IReadOnlyList<MuteRule> signatureRules,
+        IReadOnlyList<MuteRule> guardRules,
         SemanticModel? semantics,
         List<(MuteRule, MuteSpan)> spanOutput,
         IReadOnlyList<ExclusionRule>? callExclusions = null,
@@ -44,6 +46,7 @@ internal sealed class FusedSyntaxWalker : CSharpSyntaxWalker
         _callRules = callRules;
         _identifierRules = identifierRules;
         _signatureRules = signatureRules;
+        _guardRules = guardRules;
         _semantics = semantics;
         _spanOutput = spanOutput;
         _callExclusions = callExclusions;
@@ -57,6 +60,7 @@ internal sealed class FusedSyntaxWalker : CSharpSyntaxWalker
         IReadOnlyList<MuteRule> callRules,
         IReadOnlyList<MuteRule> identifierRules,
         IReadOnlyList<MuteRule> signatureRules,
+        IReadOnlyList<MuteRule> guardRules,
         SemanticModel? semantics,
         List<(MuteRule, MuteSpan)> spanOutput,
         IReadOnlyList<ExclusionRule>? callExclusions = null,
@@ -66,7 +70,7 @@ internal sealed class FusedSyntaxWalker : CSharpSyntaxWalker
     {
         PerfCounters.IncrementTreeWalks();
         var w = new FusedSyntaxWalker(
-            callRules, identifierRules, signatureRules, semantics, spanOutput,
+            callRules, identifierRules, signatureRules, guardRules, semantics, spanOutput,
             callExclusions, identifierExclusions, exclusionOutput, limitRange);
         w.Visit(root);
     }
@@ -188,7 +192,6 @@ internal sealed class FusedSyntaxWalker : CSharpSyntaxWalker
 
     private void VisitMethodLike(BaseMethodDeclarationSyntax method)
     {
-        if (_signatureRules.Count == 0) return;
         for (int i = 0; i < _signatureRules.Count; i++)
         {
             var rule = _signatureRules[i];
@@ -198,6 +201,15 @@ internal sealed class FusedSyntaxWalker : CSharpSyntaxWalker
                 ? ScopeResolver.SignatureSpan(method)
                 : ScopeResolver.Resolve(method, rule.Scope);
             _spanOutput.Add((rule, new MuteSpan(span, rule.Category, rule.Name, rule.Scope)));
+        }
+
+        if (_guardRules.Count > 0 && GuardMatcher.TryDetect(method, out var guardSpan))
+        {
+            for (int i = 0; i < _guardRules.Count; i++)
+            {
+                var rule = _guardRules[i];
+                _spanOutput.Add((rule, new MuteSpan(guardSpan, rule.Category, rule.Name, rule.Scope)));
+            }
         }
     }
 }

@@ -27,6 +27,10 @@ internal static class MutedClassificationTypes
     internal static ClassificationTypeDefinition Signature;
 
     [Export(typeof(ClassificationTypeDefinition))]
+    [Name(Constants.ClassGuards)]
+    internal static ClassificationTypeDefinition Guards;
+
+    [Export(typeof(ClassificationTypeDefinition))]
     [Name("muted.user1")] internal static ClassificationTypeDefinition User1;
     [Export(typeof(ClassificationTypeDefinition))]
     [Name("muted.user2")] internal static ClassificationTypeDefinition User2;

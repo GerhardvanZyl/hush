@@ -41,6 +41,12 @@
           <ButtonText>Mute: Toggle Exclusions</ButtonText>
         </Strings>
       </Button>
+      <Button guid="guidMutedBoilerplateCmdSet" id="cmdToggleGuards" priority="0x0105" type="Button">
+        <Parent guid="guidMutedBoilerplateCmdSet" id="MutedMenuGroup"/>
+        <Strings>
+          <ButtonText>Mute: Toggle Guards</ButtonText>
+        </Strings>
+      </Button>
 
       <Button guid="guidMutedBoilerplateCmdSet" id="cmdToggleUser1" priority="0x0110" type="Button">
         <Parent guid="guidMutedBoilerplateCmdSet" id="MutedMenuGroup"/>
@@ -83,6 +89,7 @@
     <KeyBinding guid="guidMutedBoilerplateCmdSet" id="cmdToggleSignature"  editor="guidVSStd97" key1="M" mod1="Control Alt" key2="S"/>
     <KeyBinding guid="guidMutedBoilerplateCmdSet" id="cmdToggleAll"        editor="guidVSStd97" key1="M" mod1="Control Alt" key2="A"/>
     <KeyBinding guid="guidMutedBoilerplateCmdSet" id="cmdToggleExclusions" editor="guidVSStd97" key1="M" mod1="Control Alt" key2="X"/>
+    <KeyBinding guid="guidMutedBoilerplateCmdSet" id="cmdToggleGuards"     editor="guidVSStd97" key1="M" mod1="Control Alt" key2="G"/>
     <KeyBinding guid="guidMutedBoilerplateCmdSet" id="cmdToggleUser1" editor="guidVSStd97" key1="M" mod1="Control Alt" key2="1"/>
     <KeyBinding guid="guidMutedBoilerplateCmdSet" id="cmdToggleUser2" editor="guidVSStd97" key1="M" mod1="Control Alt" key2="2"/>
     <KeyBinding guid="guidMutedBoilerplateCmdSet" id="cmdToggleUser3" editor="guidVSStd97" key1="M" mod1="Control Alt" key2="3"/>
@@ -103,6 +110,7 @@
       <IDSymbol name="cmdToggleSignature"  value="0x0102"/>
       <IDSymbol name="cmdToggleAll"        value="0x0103"/>
       <IDSymbol name="cmdToggleExclusions" value="0x0104"/>
+      <IDSymbol name="cmdToggleGuards"     value="0x0105"/>
       <IDSymbol name="cmdToggleUser1" value="0x0110"/>
       <IDSymbol name="cmdToggleUser2" value="0x0111"/>
       <IDSymbol name="cmdToggleUser3" value="0x0112"/>

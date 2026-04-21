@@ -11,6 +11,10 @@
     {
       "key": "signature",
       "displayName": "Signature"
+    },
+    {
+      "key": "guards",
+      "displayName": "Guards"
     }
   ],
   "rules": [
@@ -110,6 +114,13 @@
       "kind": "signature",
       "pattern": {},
       "scope": "signatureRange"
+    },
+    {
+      "name": "parameter-guards",
+      "category": "guards",
+      "kind": "guard",
+      "pattern": {},
+      "scope": "match"
     }
   ],
   "exclusions": []

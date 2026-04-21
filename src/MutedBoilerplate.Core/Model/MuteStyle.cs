@@ -31,6 +31,13 @@ public sealed class MuteStyle
             Opacity = 0.80,
             FontSizePercent = 92,
         },
+        MuteCategory.GuardsKey => new MuteStyle
+        {
+            Foreground = "#7F8A7A",
+            Opacity = 0.55,
+            FontSizePercent = 90,
+            Italic = true,
+        },
         _ => new MuteStyle
         {
             Foreground = "#8A8A8A",
