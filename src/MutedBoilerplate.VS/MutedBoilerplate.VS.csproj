@@ -91,7 +91,23 @@
        sets environment variables — the real targets live in tools/VSSDK/. -->
   <PropertyGroup>
     <_VsSdkBuildToolsTargets>$(NuGetPackageRoot)microsoft.vssdk.buildtools\17.14.2142\tools\VSSDK\Microsoft.VsSDK.targets</_VsSdkBuildToolsTargets>
+    <AssemblyVersion>1.0.0.1</AssemblyVersion>
+    <FileVersion>1.0.0.1</FileVersion>
   </PropertyGroup>
   <Import Project="$(_VsSdkBuildToolsTargets)" Condition="Exists('$(_VsSdkBuildToolsTargets)')" />
+
+  <!-- Stamp source.extension.vsixmanifest with $(VsixVersion) before VsSDK reads it.
+       Same Identity Id + higher Version makes VSIXInstaller upgrade in place instead
+       of requiring a prior uninstall. Pass /p:VsixVersion=X.Y.Z to msbuild, or use
+       build\pack.ps1 which derives a version from git. -->
+  <Target Name="StampVsixVersion"
+          Condition="'$(VsixVersion)' != ''"
+          BeforeTargets="GetVsixSourceItems;CreateVsixManifest;CoreCompile">
+    <XmlPoke XmlInputPath="source.extension.vsixmanifest"
+             Query="/x:PackageManifest/x:Metadata/x:Identity/@Version"
+             Value="$(VsixVersion)"
+             Namespaces="&lt;Namespace Prefix='x' Uri='http://schemas.microsoft.com/developer/vsx-schema/2011' /&gt;" />
+    <Message Importance="high" Text="Stamped VSIX version: $(VsixVersion)" />
+  </Target>
 
 </Project>

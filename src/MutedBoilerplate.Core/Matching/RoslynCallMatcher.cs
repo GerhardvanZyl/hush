@@ -45,9 +45,21 @@ public sealed class RoslynCallMatcher : IRuleMatcher
                 return true;
 
             // For instance receivers, also check declared type of the receiver.
-            if (inv.Expression is MemberAccessExpressionSyntax mae)
+            // Null-conditional calls (`activity?.Foo()`) put the invocation's
+            // expression on a MemberBindingExpressionSyntax whose receiver lives
+            // on the enclosing ConditionalAccessExpressionSyntax — handle both
+            // shapes so e.g. `activity?.AddException(ex)` matches by declared
+            // type even when the method symbol itself is unbound (newer API
+            // than the referenced assembly, or stale semantics in VS).
+            ExpressionSyntax? receiverExpr = inv.Expression switch
             {
-                var typeInfo = semantics.GetTypeInfo(mae.Expression);
+                MemberAccessExpressionSyntax mae => mae.Expression,
+                MemberBindingExpressionSyntax => inv.FirstAncestorOrSelf<ConditionalAccessExpressionSyntax>()?.Expression,
+                _ => null,
+            };
+            if (receiverExpr is not null)
+            {
+                var typeInfo = semantics.GetTypeInfo(receiverExpr);
                 var typeName = typeInfo.Type?.Name;
                 if (!string.IsNullOrEmpty(typeName) && GlobPattern.IsMatch(pattern.ReceiverTypeGlob, typeName))
                     return true;

@@ -37,6 +37,39 @@ public class NullConditionalTests
     }
 
     [Fact]
+    public void Null_conditional_matches_via_receiver_type_when_method_is_unresolved_with_semantics()
+    {
+        // Receiver type binds (`Activity?`), but the method name doesn't exist
+        // on the in-source Activity — mirrors VS seeing `activity?.AddException(ex)`
+        // against a referenced System.Diagnostics.DiagnosticSource older than
+        // .NET 9, or a stale/incomplete semantic model. The matcher must still
+        // recognize the receiver's declared type on the MemberBindingExpression
+        // path; previously it returned false because the receiver-type fallback
+        // only handled MemberAccessExpressionSyntax.
+        var code = """
+            class Activity { }
+            class C
+            {
+                Activity? _a;
+                void M() { _a?.AddException(null); }
+            }
+            """;
+        var ctx = MatchContext.FromCSharpWithSemantics(code);
+        var rule = new MuteRule
+        {
+            Name = "activity-addexception",
+            Category = MuteCategory.TelemetryKey,
+            Kind = RuleKind.RoslynCall,
+            Pattern = new RulePattern { ReceiverTypeGlob = "Activity", MethodNameGlob = "AddException" },
+            Scope = MuteScope.WholeStatement,
+        };
+
+        var spans = new RoslynCallMatcher().Match(rule, ctx).ToList();
+
+        Assert.Single(spans);
+    }
+
+    [Fact]
     public void ActivitySource_StartActivity_matches_via_default_rules()
     {
         var code = """

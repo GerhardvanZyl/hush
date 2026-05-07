@@ -27,10 +27,17 @@ namespace MutedBoilerplate.VS.Integration;
 // will see it as stale on the next UI pass and schedule another compute.
 internal sealed class SnapshotMuteCache
 {
+    // Debounce window: only recompute after 1s of no activity (typing,
+    // scrolling, clicking — all surface as Get() calls from VS's reclassify
+    // pump). Each ScheduleCompute() restarts this timer so a steady stream
+    // of edits coalesces into one compute when the user pauses.
+    private const int DebounceMilliseconds = 1000;
+
     private readonly ITextBuffer _buffer;
     private readonly MuteStateService _state;
     private CachedResult? _current;
     private int _computing; // 0 = idle, 1 = background compute in flight
+    private Timer? _debounceTimer;
 
     public SnapshotMuteCache(ITextBuffer buffer, MuteStateService state)
     {
@@ -64,7 +71,9 @@ internal sealed class SnapshotMuteCache
         }
 
         // Stale or missing — schedule a background compute but don't block.
-        ScheduleCompute();
+        // First-ever compute runs immediately so the file lights up on open;
+        // subsequent computes are debounced to coalesce typing/scrolling.
+        ScheduleCompute(immediate: cached is null);
 
         if (cached is not null) return cached;
 
@@ -75,7 +84,34 @@ internal sealed class SnapshotMuteCache
             Array.Empty<MuteSpan>(), MuteSpanIndex.Empty);
     }
 
-    private void ScheduleCompute()
+    private void ScheduleCompute(bool immediate)
+    {
+        if (immediate)
+        {
+            StartComputeNow();
+            return;
+        }
+
+        var timer = Volatile.Read(ref _debounceTimer);
+        if (timer is null)
+        {
+            var created = new Timer(_ => StartComputeNow(), null, Timeout.Infinite, Timeout.Infinite);
+            var existing = Interlocked.CompareExchange(ref _debounceTimer, created, null);
+            if (existing is not null)
+            {
+                created.Dispose();
+                timer = existing;
+            }
+            else
+            {
+                timer = created;
+            }
+        }
+
+        timer.Change(DebounceMilliseconds, Timeout.Infinite);
+    }
+
+    private void StartComputeNow()
     {
         if (Interlocked.CompareExchange(ref _computing, 1, 0) != 0) return;
         Task.Run(() =>
