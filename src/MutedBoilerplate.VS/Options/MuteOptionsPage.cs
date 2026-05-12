@@ -18,7 +18,8 @@ public sealed class MuteOptionsPage : DialogPage
 
     [Category("Categories")]
     [DisplayName("Signature enabled")]
-    public bool SignatureEnabled { get; set; } = true;
+    [Description("Off by default — the built-in rule mutes every method signature, which is too aggressive for most code.")]
+    public bool SignatureEnabled { get; set; } = false;
 
     [Category("Auto-collapse")]
     [DisplayName("Auto-collapse telemetry")]
