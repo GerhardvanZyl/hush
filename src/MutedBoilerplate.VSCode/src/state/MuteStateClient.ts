@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { CategoryDto } from '../sidecar/protocol';
+import { CategoryDto, TsCallRuleDto } from '../sidecar/protocol';
 import { SidecarClient } from '../sidecar/SidecarClient';
 
 /**
@@ -15,6 +15,7 @@ export class MuteStateClient implements vscode.Disposable {
   private _stateVersion = 0;
   private _ruleSetVersion = 0;
   private _exclusionsEnabled = true;
+  private _tsCallRules: readonly TsCallRuleDto[] = [];
   private readonly _changed = new vscode.EventEmitter<void>();
   readonly onChanged = this._changed.event;
 
@@ -27,6 +28,18 @@ export class MuteStateClient implements vscode.Disposable {
     return Array.from(this.categoriesByKey.values());
   }
 
+  /**
+   * Rules of kind `tsCall` shipped by the sidecar at initialize/reload time.
+   * The TS-side matcher applies these in-process for ts/tsx/js/jsx documents
+   * (Roslyn isn't usable for those languages).
+   */
+  get tsCallRules(): readonly TsCallRuleDto[] { return this._tsCallRules; }
+
+  /** Only rules whose category is currently enabled. */
+  enabledTsCallRules(): readonly TsCallRuleDto[] {
+    return this._tsCallRules.filter((r) => this.isEnabled(r.category));
+  }
+
   isEnabled(categoryKey: string): boolean {
     const c = this.categoriesByKey.get(categoryKey.toLowerCase());
     return c?.enabled ?? false;
@@ -36,19 +49,31 @@ export class MuteStateClient implements vscode.Disposable {
     return this.categoriesByKey.get(categoryKey.toLowerCase())?.style;
   }
 
-  hydrateFromInitialize(categories: readonly CategoryDto[], stateVersion: number, ruleSetVersion: number, exclusionsEnabled: boolean): void {
+  hydrateFromInitialize(
+    categories: readonly CategoryDto[],
+    stateVersion: number,
+    ruleSetVersion: number,
+    exclusionsEnabled: boolean,
+    tsCallRules: readonly TsCallRuleDto[],
+  ): void {
     this.categoriesByKey.clear();
     for (const c of categories) this.categoriesByKey.set(c.key.toLowerCase(), c);
     this._stateVersion = stateVersion;
     this._ruleSetVersion = ruleSetVersion;
     this._exclusionsEnabled = exclusionsEnabled;
+    this._tsCallRules = tsCallRules;
     this._changed.fire();
   }
 
-  hydrateFromReload(categories: readonly CategoryDto[], ruleSetVersion: number): void {
+  hydrateFromReload(
+    categories: readonly CategoryDto[],
+    ruleSetVersion: number,
+    tsCallRules: readonly TsCallRuleDto[],
+  ): void {
     this.categoriesByKey.clear();
     for (const c of categories) this.categoriesByKey.set(c.key.toLowerCase(), c);
     this._ruleSetVersion = ruleSetVersion;
+    this._tsCallRules = tsCallRules;
     this._changed.fire();
   }
 

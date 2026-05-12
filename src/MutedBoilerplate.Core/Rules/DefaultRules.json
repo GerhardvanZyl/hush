@@ -121,6 +121,16 @@
       "kind": "guard",
       "pattern": {},
       "scope": "match"
+    },
+    {
+      "name": "ts-console",
+      "category": "logging",
+      "kind": "tsCall",
+      "pattern": {
+        "receiverTypeGlob": "console",
+        "methodNameGlob": "log|warn|error|info|debug|trace"
+      },
+      "scope": "wholeStatement"
     }
   ],
   "exclusions": []

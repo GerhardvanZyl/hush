@@ -8,8 +8,11 @@ import { DecorationManager } from './decorations/DecorationManager';
 import { MutedFoldingRangeProvider } from './folding/MutedFoldingRangeProvider';
 import { AutoFoldOnOpen } from './folding/AutoFoldOnOpen';
 import { registerCommands } from './commands/registerCommands';
+import { isTsLanguage, TS_LANGUAGE_IDS } from './matching/TsCallMatcher';
 
-const SUPPORTED_LANGUAGES = ['csharp'];
+const SIDECAR_LANGUAGES = ['csharp'];
+const SUPPORTED_LANGUAGES = [...SIDECAR_LANGUAGES, ...TS_LANGUAGE_IDS];
+const isSidecarLanguage = (languageId: string) => SIDECAR_LANGUAGES.includes(languageId);
 const MAX_CRASHES_IN_WINDOW = 3;
 const CRASH_WINDOW_MS = 60_000;
 
@@ -57,46 +60,57 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   registerCommands(context, state, sidecar, userSlots, output);
 
-  // Wire document lifecycle to sidecar.
+  // Wire document lifecycle. Sidecar-languages (csharp) push state to the
+  // sidecar's DocumentStore so server-side caching works. TS/JS languages
+  // bypass the sidecar entirely — the TS matcher runs in-process from
+  // doc.getText() directly.
   const handleOpen = async (doc: vscode.TextDocument) => {
     if (!SUPPORTED_LANGUAGES.includes(doc.languageId)) return;
-    try {
-      await sidecar.didOpen({
-        uri: doc.uri.toString(),
-        languageId: doc.languageId,
-        version: doc.version,
-        content: doc.getText(),
-      });
-      decorations.scheduleRefresh(doc, 0);
-    } catch (e) {
-      output.appendLine(`[lifecycle] didOpen failed: ${e}`);
+    if (isSidecarLanguage(doc.languageId)) {
+      try {
+        await sidecar.didOpen({
+          uri: doc.uri.toString(),
+          languageId: doc.languageId,
+          version: doc.version,
+          content: doc.getText(),
+        });
+      } catch (e) {
+        output.appendLine(`[lifecycle] didOpen failed: ${e}`);
+        return;
+      }
     }
+    decorations.scheduleRefresh(doc, 0);
   };
   const handleChange = async (e: vscode.TextDocumentChangeEvent) => {
     if (!SUPPORTED_LANGUAGES.includes(e.document.languageId)) return;
     if (e.contentChanges.length === 0) return;
-    try {
-      await sidecar.didChange({
-        uri: e.document.uri.toString(),
-        version: e.document.version,
-        changes: e.contentChanges.map((c) => ({
-          start: c.rangeOffset,
-          length: c.rangeLength,
-          text: c.text,
-        })),
-      });
-      decorations.scheduleRefresh(e.document);
-    } catch (err) {
-      output.appendLine(`[lifecycle] didChange failed: ${err}`);
+    if (isSidecarLanguage(e.document.languageId)) {
+      try {
+        await sidecar.didChange({
+          uri: e.document.uri.toString(),
+          version: e.document.version,
+          changes: e.contentChanges.map((c) => ({
+            start: c.rangeOffset,
+            length: c.rangeLength,
+            text: c.text,
+          })),
+        });
+      } catch (err) {
+        output.appendLine(`[lifecycle] didChange failed: ${err}`);
+        return;
+      }
     }
+    decorations.scheduleRefresh(e.document);
   };
   const handleClose = async (doc: vscode.TextDocument) => {
     if (!SUPPORTED_LANGUAGES.includes(doc.languageId)) return;
     decorations.clearCachedSpans(doc.uri.toString());
-    try {
-      await sidecar.didClose({ uri: doc.uri.toString() });
-    } catch (e) {
-      output.appendLine(`[lifecycle] didClose failed: ${e}`);
+    if (isSidecarLanguage(doc.languageId)) {
+      try {
+        await sidecar.didClose({ uri: doc.uri.toString() });
+      } catch (e) {
+        output.appendLine(`[lifecycle] didClose failed: ${e}`);
+      }
     }
   };
 
@@ -125,9 +139,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       output.appendLine('[supervisor] restarting sidecar');
       sidecar.start();
       await initializeSidecar(sidecar, state, output);
-      // Replay didOpen for every open supported document.
+      // Replay didOpen for sidecar-handled docs only (TS docs need no replay).
       for (const doc of vscode.workspace.textDocuments) {
-        if (SUPPORTED_LANGUAGES.includes(doc.languageId)) await handleOpen(doc);
+        if (isSidecarLanguage(doc.languageId)) await handleOpen(doc);
       }
     }),
   );
@@ -144,7 +158,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const path = vscode.workspace.getConfiguration('mutedBoilerplate').get<string>('rulesPath', '');
         try {
           const resp = await sidecar.reloadRules({ path: path && path.trim().length > 0 ? path : undefined });
-          state.hydrateFromReload(resp.categories, resp.ruleSetVersion);
+          state.hydrateFromReload(resp.categories, resp.ruleSetVersion, resp.tsCallRules);
           decorations.invalidateAll();
           decorations.refreshAllVisibleEditors();
         } catch (err) {
@@ -156,6 +170,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   // Initial pass over already-open documents.
   for (const doc of vscode.workspace.textDocuments) await handleOpen(doc);
+  // Repaint any already-visible TS docs whose state arrived after activation.
+  decorations.refreshAllVisibleEditors();
 }
 
 async function initializeSidecar(
@@ -182,8 +198,8 @@ async function initializeSidecar(
       initialState,
       exclusionsEnabled,
     });
-    state.hydrateFromInitialize(resp.categories, resp.stateVersion, resp.ruleSetVersion, resp.exclusionsEnabled);
-    output.appendLine(`[init] categories=${resp.categories.length} stateVer=${resp.stateVersion} ruleVer=${resp.ruleSetVersion}`);
+    state.hydrateFromInitialize(resp.categories, resp.stateVersion, resp.ruleSetVersion, resp.exclusionsEnabled, resp.tsCallRules ?? []);
+    output.appendLine(`[init] categories=${resp.categories.length} tsCallRules=${(resp.tsCallRules ?? []).length} stateVer=${resp.stateVersion} ruleVer=${resp.ruleSetVersion}`);
   } catch (e) {
     output.appendLine(`[init] sidecar initialize failed: ${e}`);
     void vscode.window.showErrorMessage(

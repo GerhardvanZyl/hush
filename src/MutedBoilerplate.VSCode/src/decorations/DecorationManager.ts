@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { themeColorIdForCategory } from '../colors/builtInColors';
+import { isTsLanguage, TsCallMatcher } from '../matching/TsCallMatcher';
 import { GetSpansResponse, MuteSpanDto, MuteStyleDto } from '../sidecar/protocol';
 import { SidecarClient } from '../sidecar/SidecarClient';
 import { MuteStateClient } from '../state/MuteStateClient';
@@ -14,6 +15,7 @@ export class DecorationManager implements vscode.Disposable {
   private readonly typesByCategory = new Map<string, vscode.TextEditorDecorationType>();
   private readonly cachedSpans = new Map<string, MuteSpanDto[]>();
   private readonly debounceHandles = new Map<string, NodeJS.Timeout>();
+  private readonly tsMatcher = new TsCallMatcher();
   private debounceMs: number;
   private readonly _onSpansUpdated = new vscode.EventEmitter<{ uri: string; spans: MuteSpanDto[] }>();
   readonly onSpansUpdated = this._onSpansUpdated.event;
@@ -53,27 +55,43 @@ export class DecorationManager implements vscode.Disposable {
   }
 
   async refresh(doc: vscode.TextDocument): Promise<MuteSpanDto[]> {
+    const spans = isTsLanguage(doc.languageId)
+      ? this.computeTsSpans(doc)
+      : await this.fetchSidecarSpans(doc);
+    if (spans === undefined) return [];
+
+    this.cachedSpans.set(doc.uri.toString(), spans);
+    this.applyToVisibleEditors(doc, spans);
+    this._onSpansUpdated.fire({ uri: doc.uri.toString(), spans });
+    return spans;
+  }
+
+  private computeTsSpans(doc: vscode.TextDocument): MuteSpanDto[] {
+    const rules = this.state.enabledTsCallRules();
+    if (rules.length === 0) return [];
+    try {
+      return this.tsMatcher.match(doc.getText(), doc.languageId, rules);
+    } catch (e) {
+      this.output.appendLine(`[decorations] tsMatcher failed for ${doc.uri.toString()}: ${e}`);
+      return [];
+    }
+  }
+
+  private async fetchSidecarSpans(doc: vscode.TextDocument): Promise<MuteSpanDto[] | undefined> {
     let response: GetSpansResponse;
     try {
       response = await this.sidecar.getSpans({ uri: doc.uri.toString(), version: doc.version });
     } catch (e) {
       this.output.appendLine(`[decorations] getSpans failed for ${doc.uri.toString()}: ${e}`);
-      return [];
+      return undefined;
     }
-
     // Stale response — older than current state/ruleset, drop on the floor.
     if (response.stateVersion < this.state.stateVersion || response.ruleSetVersion < this.state.ruleSetVersion) {
-      return [];
+      return undefined;
     }
-
     // Stale snapshot — document moved on while sidecar was computing.
-    if (response.version !== doc.version) return [];
-
-    const spans = response.spans;
-    this.cachedSpans.set(doc.uri.toString(), spans);
-    this.applyToVisibleEditors(doc, spans);
-    this._onSpansUpdated.fire({ uri: doc.uri.toString(), spans });
-    return spans;
+    if (response.version !== doc.version) return undefined;
+    return response.spans;
   }
 
   getCachedSpans(uri: string): readonly MuteSpanDto[] {

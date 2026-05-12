@@ -39,6 +39,15 @@ export interface InitializeResponse {
   stateVersion: number;
   ruleSetVersion: number;
   exclusionsEnabled: boolean;
+  tsCallRules: TsCallRuleDto[];
+}
+
+export interface TsCallRuleDto {
+  name: string;
+  category: string;
+  receiverGlob?: string | null;
+  methodNameGlob?: string | null;
+  scope: MuteScope;
 }
 
 export interface DidOpenRequest {
@@ -109,6 +118,7 @@ export interface ReloadRulesRequest {
 export interface ReloadRulesResponse {
   ruleSetVersion: number;
   categories: CategoryDto[];
+  tsCallRules: TsCallRuleDto[];
 }
 
 export const BuiltInCategoryKeys = {

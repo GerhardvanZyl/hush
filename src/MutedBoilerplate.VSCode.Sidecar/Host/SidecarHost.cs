@@ -3,6 +3,7 @@ using MutedBoilerplate.Core.Matching;
 using MutedBoilerplate.Core.Model;
 using MutedBoilerplate.Core.Rules;
 using MutedBoilerplate.VSCode.Sidecar.Protocol;
+using CoreRules = MutedBoilerplate.Core.Rules;
 
 namespace MutedBoilerplate.VSCode.Sidecar.Host;
 
@@ -52,6 +53,7 @@ internal sealed class SidecarHost
                 StateVersion = _stateVersion,
                 RuleSetVersion = _ruleSetVersion,
                 ExclusionsEnabled = _state.ExclusionsEnabled,
+                TsCallRules = BuildTsCallRuleDtos(),
             };
         }
     }
@@ -170,6 +172,7 @@ internal sealed class SidecarHost
             {
                 RuleSetVersion = _ruleSetVersion,
                 Categories = BuildCategoryDtos(),
+                TsCallRules = BuildTsCallRuleDtos(),
             };
         }
     }
@@ -214,6 +217,24 @@ internal sealed class SidecarHost
             ExclusionsEnabled = _state.ExclusionsEnabled,
             Categories = arr,
         };
+    }
+
+    private TsCallRuleDto[] BuildTsCallRuleDtos()
+    {
+        var list = new List<TsCallRuleDto>();
+        foreach (var rule in _ruleSet.Rules)
+        {
+            if (!string.Equals(rule.Kind, CoreRules.RuleKind.TsCall, System.StringComparison.OrdinalIgnoreCase)) continue;
+            list.Add(new TsCallRuleDto
+            {
+                Name = rule.Name,
+                Category = rule.Category,
+                ReceiverGlob = rule.Pattern.ReceiverTypeGlob,
+                MethodNameGlob = rule.Pattern.MethodNameGlob,
+                Scope = rule.Scope.ToString(),
+            });
+        }
+        return list.ToArray();
     }
 
     private CategoryDto[] BuildCategoryDtos()

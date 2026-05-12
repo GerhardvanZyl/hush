@@ -35,7 +35,7 @@ export function registerCommands(
   reg('mutedBoilerplate.reloadRules', async () => {
     const path = vscode.workspace.getConfiguration('mutedBoilerplate').get<string>('rulesPath', '');
     const resp = await sidecar.reloadRules({ path: path && path.trim().length > 0 ? path : undefined });
-    state.hydrateFromReload(resp.categories, resp.ruleSetVersion);
-    output.appendLine(`[commands] reloaded rules (version ${resp.ruleSetVersion})`);
+    state.hydrateFromReload(resp.categories, resp.ruleSetVersion, resp.tsCallRules ?? []);
+    output.appendLine(`[commands] reloaded rules (version ${resp.ruleSetVersion}, ${(resp.tsCallRules ?? []).length} tsCall)`);
   });
 }

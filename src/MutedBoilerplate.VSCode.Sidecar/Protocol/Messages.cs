@@ -31,6 +31,31 @@ public sealed class InitializeResponse
 
     [JsonPropertyName("exclusionsEnabled")]
     public bool ExclusionsEnabled { get; set; }
+
+    [JsonPropertyName("tsCallRules")]
+    public TsCallRuleDto[] TsCallRules { get; set; } = System.Array.Empty<TsCallRuleDto>();
+}
+
+/// <summary>
+/// A rule of kind <c>tsCall</c> shipped to the VS Code extension so its in-process
+/// TypeScript Compiler API matcher can apply it. Core itself doesn't dispatch this kind.
+/// </summary>
+public sealed class TsCallRuleDto
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = "";
+
+    [JsonPropertyName("category")]
+    public string Category { get; set; } = "";
+
+    [JsonPropertyName("receiverGlob")]
+    public string? ReceiverGlob { get; set; }
+
+    [JsonPropertyName("methodNameGlob")]
+    public string? MethodNameGlob { get; set; }
+
+    [JsonPropertyName("scope")]
+    public string Scope { get; set; } = "";
 }
 
 public sealed class CategoryDto
@@ -190,4 +215,7 @@ public sealed class ReloadRulesResponse
 
     [JsonPropertyName("categories")]
     public CategoryDto[] Categories { get; set; } = System.Array.Empty<CategoryDto>();
+
+    [JsonPropertyName("tsCallRules")]
+    public TsCallRuleDto[] TsCallRules { get; set; } = System.Array.Empty<TsCallRuleDto>();
 }

@@ -4,11 +4,17 @@ Visually mute boilerplate (telemetry, logging, signatures, parameter guards) so 
 
 ## How it works
 
-The extension runs a bundled .NET sidecar (`MutedBoilerplate.VSCode.Sidecar`) that hosts the C# matching engine. The extension talks to it via JSON-RPC over stdio, applies results as editor decorations, and surfaces auto-collapse regions through `FoldingRangeProvider` + the `editor.fold` command.
+The extension splits work by language:
+
+- **C# (`.cs`)** → bundled .NET sidecar (`MutedBoilerplate.VSCode.Sidecar`) hosts the Roslyn-based matching engine. Extension talks to it via JSON-RPC over stdio.
+- **TS/TSX/JS/JSX** → in-process `TsCallMatcher` using the TypeScript Compiler API (the `typescript` npm package). No sidecar round-trip. Rules of kind `tsCall` are shipped from the sidecar's loaded `RuleSet` at initialize time so the sidecar stays the single source of truth.
 
 ```
-VS Code editor ─► Extension host (TS) ─JSON-RPC─► .NET sidecar ─► MutedBoilerplate.Core
+VS Code editor ─► Extension host (TS) ─┬─ csharp ─JSON-RPC─► .NET sidecar ─► MutedBoilerplate.Core
+                                       └─ ts/tsx/js/jsx ─► TsCallMatcher (in-process)
 ```
+
+Decorations + folding + auto-collapse work uniformly across both paths.
 
 ## Build (development)
 
