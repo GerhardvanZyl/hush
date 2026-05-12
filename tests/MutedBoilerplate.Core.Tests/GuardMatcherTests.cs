@@ -233,6 +233,133 @@ public class GuardMatcherTests
     }
 
     [Fact]
+    public void Does_not_match_if_return_is_interpolated_string()
+    {
+        // GetLevelName-style dispatcher: each branch returns a computed value, not a guard fallback.
+        var code = """
+            class C
+            {
+                public string GetLevelName(Device device)
+                {
+                    if (device.HasA && device.HasB)
+                    {
+                        return $"{device.A} - {device.B}";
+                    }
+                    if (device.HasA)
+                    {
+                        return $"{device.A}";
+                    }
+                    return string.Empty;
+                }
+            }
+            class Device { public bool HasA; public bool HasB; public string A; public string B; }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
+        Assert.Empty(spans);
+    }
+
+    [Fact]
+    public void Does_not_match_if_return_invokes_a_method()
+    {
+        var code = """
+            class C
+            {
+                int M(int x)
+                {
+                    if (x > 0) { return Compute(x); }
+                    return 0;
+                }
+                int Compute(int x) => x;
+            }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
+        Assert.Empty(spans);
+    }
+
+    [Fact]
+    public void Does_not_match_if_return_dereferences_chain()
+    {
+        var code = """
+            class C
+            {
+                string M(Holder h)
+                {
+                    if (h.HasName) { return h.Inner.Name; }
+                    return null;
+                }
+            }
+            class Holder { public bool HasName; public Inner Inner; }
+            class Inner { public string Name; }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
+        Assert.Empty(spans);
+    }
+
+    [Fact]
+    public void Matches_return_null_guard()
+    {
+        var code = """
+            class C { string M(string x) { if (x == null) return null; return x.Trim(); } }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
+        Assert.Single(spans);
+        Assert.Contains("return null", Snippet(ctx, spans[0]));
+    }
+
+    [Fact]
+    public void Matches_return_string_empty_guard()
+    {
+        var code = """
+            class C { string M(string x) { if (x == null) return string.Empty; return x; } }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
+        Assert.Single(spans);
+        Assert.Contains("string.Empty", Snippet(ctx, spans[0]));
+    }
+
+    [Fact]
+    public void Matches_return_default_guard()
+    {
+        var code = """
+            class C { int M(int x) { if (x < 0) return default; return x + 1; } }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
+        Assert.Single(spans);
+        Assert.Contains("return default", Snippet(ctx, spans[0]));
+    }
+
+    [Fact]
+    public void Matches_return_array_empty_guard()
+    {
+        var code = """
+            class C { int[] M(int[] xs) { if (xs == null) return System.Array.Empty<int>(); return xs; } }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
+        Assert.Single(spans);
+        Assert.Contains("Array.Empty", Snippet(ctx, spans[0]));
+    }
+
+    [Fact]
+    public void Matches_return_null_forgiving_guard()
+    {
+        var code = """
+            #nullable enable
+            class C { string M(string? x) { if (x == null) return null!; return x; } }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
+        Assert.Single(spans);
+        Assert.Contains("return null!", Snippet(ctx, spans[0]));
+    }
+
+    [Fact]
     public void Default_ruleset_includes_guards_category_and_rule()
     {
         var rs = RuleSet.LoadDefaults();

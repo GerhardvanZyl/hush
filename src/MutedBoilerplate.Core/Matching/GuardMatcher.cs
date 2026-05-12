@@ -98,10 +98,73 @@ public sealed class GuardMatcher : IRuleMatcher
         return IsAbortingStatement(stmt);
     }
 
-    private static bool IsAbortingStatement(StatementSyntax stmt) =>
-        stmt is ThrowStatementSyntax
-        || stmt is ReturnStatementSyntax
-        || (stmt is ExpressionStatementSyntax es && es.Expression is ThrowExpressionSyntax);
+    private static bool IsAbortingStatement(StatementSyntax stmt)
+    {
+        if (stmt is ThrowStatementSyntax) return true;
+        if (stmt is ExpressionStatementSyntax es && es.Expression is ThrowExpressionSyntax) return true;
+        if (stmt is ReturnStatementSyntax ret)
+            return ret.Expression is null || IsTrivialReturnExpression(ret.Expression);
+        return false;
+    }
+
+    // A return-based abort only counts as a guard if it returns a trivial fallback
+    // (null, default, literal, simple identifier, Type.Member, Empty<T>()). Returning
+    // a computed value (interpolation, arithmetic, method call) is business logic, not
+    // a guard — see GetLevelName-style methods that just dispatch among returns.
+    private static bool IsTrivialReturnExpression(ExpressionSyntax expr)
+    {
+        // Peel parentheses and the null-forgiving `!` so `return null!` still qualifies.
+        while (true)
+        {
+            switch (expr)
+            {
+                case ParenthesizedExpressionSyntax p:
+                    expr = p.Expression;
+                    continue;
+                case PostfixUnaryExpressionSyntax pu when pu.OperatorToken.IsKind(SyntaxKind.ExclamationToken):
+                    expr = pu.Operand;
+                    continue;
+            }
+            break;
+        }
+
+        switch (expr)
+        {
+            case LiteralExpressionSyntax:
+            case DefaultExpressionSyntax:
+            case IdentifierNameSyntax:
+                return true;
+            case MemberAccessExpressionSyntax m:
+                // Allow simple `Type.Member` / `param.Member` (depth 1). Reject deeper
+                // chains like `device.Location.Name`, which are data dereferences.
+                return m.Expression is IdentifierNameSyntax or PredefinedTypeSyntax;
+            case InvocationExpressionSyntax inv:
+                return IsEmptyFactoryInvocation(inv);
+            default:
+                return false;
+        }
+    }
+
+    private static bool IsEmptyFactoryInvocation(InvocationExpressionSyntax inv)
+    {
+        // Array.Empty<T>(), Enumerable.Empty<T>(), string.Empty (when written as a call) — no-arg "Empty".
+        if (inv.ArgumentList is null || inv.ArgumentList.Arguments.Count != 0) return false;
+        return GetTrailingName(inv.Expression) == "Empty";
+    }
+
+    private static string? GetTrailingName(ExpressionSyntax expr) => expr switch
+    {
+        MemberAccessExpressionSyntax m => GetSimpleName(m.Name),
+        SimpleNameSyntax s => GetSimpleName(s),
+        _ => null,
+    };
+
+    private static string? GetSimpleName(SimpleNameSyntax name) => name switch
+    {
+        IdentifierNameSyntax id => id.Identifier.Text,
+        GenericNameSyntax g => g.Identifier.Text,
+        _ => null,
+    };
 
     private static bool IsGuardExpression(ExpressionSyntax expr, HashSet<string> paramNames)
     {
