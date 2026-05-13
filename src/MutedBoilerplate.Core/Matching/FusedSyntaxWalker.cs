@@ -203,12 +203,17 @@ internal sealed class FusedSyntaxWalker : CSharpSyntaxWalker
             _spanOutput.Add((rule, new MuteSpan(span, rule.Category, rule.Name, rule.Scope)));
         }
 
-        if (_guardRules.Count > 0 && GuardMatcher.TryDetect(method, out var guardSpan))
+        if (_guardRules.Count > 0)
         {
-            for (int i = 0; i < _guardRules.Count; i++)
+            var guardSpans = GuardMatcher.Detect(method);
+            for (int s = 0; s < guardSpans.Count; s++)
             {
-                var rule = _guardRules[i];
-                _spanOutput.Add((rule, new MuteSpan(guardSpan, rule.Category, rule.Name, rule.Scope)));
+                var guardSpan = guardSpans[s];
+                for (int i = 0; i < _guardRules.Count; i++)
+                {
+                    var rule = _guardRules[i];
+                    _spanOutput.Add((rule, new MuteSpan(guardSpan, rule.Category, rule.Name, rule.Scope)));
+                }
             }
         }
     }

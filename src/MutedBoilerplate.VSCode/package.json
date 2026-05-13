@@ -202,10 +202,10 @@
         "id": "mutedBoilerplate.guards.foreground",
         "description": "Foreground for muted parameter guards.",
         "defaults": {
-          "dark": "#9FA79B",
-          "light": "#8B948B",
-          "highContrast": "#B0B8B0",
-          "highContrastLight": "#5A625A"
+          "dark": "#C2C9BE",
+          "light": "#5A6358",
+          "highContrast": "#D4DCD2",
+          "highContrastLight": "#3A4239"
         }
       },
       {

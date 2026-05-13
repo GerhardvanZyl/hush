@@ -34,7 +34,7 @@
       "kind": "roslynCall",
       "pattern": {
         "receiverTypeGlob": "Activity",
-        "methodNameGlob": "AddTag|AddEvent|SetTag|SetStatus|AddBaggage|Stop|Dispose"
+        "methodNameGlob": "AddTag|AddEvent|AddException|AddLink|SetTag|SetStatus|AddBaggage|Stop|Dispose"
       },
       "scope": "wholeStatement"
     },

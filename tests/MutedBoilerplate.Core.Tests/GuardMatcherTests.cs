@@ -141,6 +141,81 @@ public class GuardMatcherTests
     }
 
     [Fact]
+    public void Matches_guard_after_leading_logging_call()
+    {
+        var code = """
+            class C
+            {
+                void M(string x)
+                {
+                    System.Console.WriteLine("entering");
+                    if (x == null) throw new System.ArgumentNullException(nameof(x));
+                    var y = x.Length;
+                }
+            }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
+        Assert.Single(spans);
+        var snippet = Snippet(ctx, spans[0]);
+        Assert.Contains("if (x == null)", snippet);
+        Assert.DoesNotContain("WriteLine", snippet);
+        Assert.DoesNotContain("var y", snippet);
+    }
+
+    [Fact]
+    public void Matches_guard_after_multiple_leading_logging_and_telemetry_calls()
+    {
+        var code = """
+            class C
+            {
+                void M(string p)
+                {
+                    _logger.LogInformation("entering with {p}", p);
+                    _activity?.SetTag("p", p);
+                    if (p == null) throw new System.ArgumentNullException(nameof(p));
+                    Use(p);
+                }
+                void Use(string s) {}
+                System.Diagnostics.Activity? _activity;
+                Microsoft.Extensions.Logging.ILogger _logger = null!;
+            }
+            namespace Microsoft.Extensions.Logging { interface ILogger { void LogInformation(string s, params object[] a); } }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
+        Assert.Single(spans);
+        var snippet = Snippet(ctx, spans[0]);
+        Assert.Contains("if (p == null)", snippet);
+        Assert.DoesNotContain("LogInformation", snippet);
+        Assert.DoesNotContain("SetTag", snippet);
+    }
+
+    [Fact]
+    public void Emits_separate_spans_for_guards_separated_by_logging()
+    {
+        var code = """
+            class C
+            {
+                void M(string a, string b)
+                {
+                    if (a == null) throw new System.ArgumentNullException(nameof(a));
+                    System.Console.WriteLine("between");
+                    if (b == null) throw new System.ArgumentNullException(nameof(b));
+                    var x = 1;
+                }
+            }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
+        Assert.Equal(2, spans.Count);
+        Assert.Contains("if (a ==", Snippet(ctx, spans[0]));
+        Assert.Contains("if (b ==", Snippet(ctx, spans[1]));
+        Assert.DoesNotContain("WriteLine", Snippet(ctx, spans[0]));
+        Assert.DoesNotContain("WriteLine", Snippet(ctx, spans[1]));
+    }
+
+    [Fact]
     public void Stops_at_first_non_guard_statement()
     {
         var code = """

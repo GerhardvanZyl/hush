@@ -78,8 +78,8 @@ internal sealed class MutedGuardsFormat : ClassificationFormatDefinition
     public MutedGuardsFormat()
     {
         DisplayName = "Muted Guards";
-        ForegroundColor = MuteColors.Parse("#9FA79B");
-        ForegroundOpacity = 0.55;
+        ForegroundColor = MuteColors.Parse("#C2C9BE");
+        ForegroundOpacity = 0.85;
         IsItalic = true;
     }
 }

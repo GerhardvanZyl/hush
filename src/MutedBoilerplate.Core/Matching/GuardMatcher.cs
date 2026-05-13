@@ -26,19 +26,19 @@ public sealed class GuardMatcher : IRuleMatcher
         var root = ctx.Tree.GetRoot();
         foreach (var method in root.DescendantNodes().OfType<BaseMethodDeclarationSyntax>())
         {
-            if (TryDetect(method, out var span))
+            foreach (var span in Detect(method))
                 yield return new MuteSpan(span, rule.Category, rule.Name, rule.Scope);
         }
     }
 
-    public static bool TryDetect(BaseMethodDeclarationSyntax method, out TextSpan span)
+    public static List<TextSpan> Detect(BaseMethodDeclarationSyntax method)
     {
-        span = default;
+        var result = new List<TextSpan>();
         var body = method.Body;
-        if (body is null) return false;
+        if (body is null) return result;
 
         var parameters = method.ParameterList?.Parameters;
-        if (parameters is null || parameters.Value.Count == 0) return false;
+        if (parameters is null || parameters.Value.Count == 0) return result;
 
         HashSet<string>? paramNames = null;
         foreach (var p in parameters.Value)
@@ -47,20 +47,57 @@ public sealed class GuardMatcher : IRuleMatcher
             if (string.IsNullOrEmpty(name)) continue;
             (paramNames ??= new HashSet<string>(StringComparer.Ordinal)).Add(name);
         }
-        if (paramNames is null) return false;
+        if (paramNames is null) return result;
 
-        int firstStart = -1;
-        int lastEnd = -1;
+        // Walk the entry block of the method. Contiguous guards collapse into a
+        // single span; "bare call" statements (telemetry/logging/tracing) are
+        // transparent — they don't end detection and don't get folded into the
+        // span (their own rules mute them independently). Any other statement
+        // ends the entry block.
+        int runStart = -1;
+        int runEnd = -1;
         foreach (var stmt in body.Statements)
         {
-            if (!IsGuardStatement(stmt, paramNames)) break;
-            if (firstStart < 0) firstStart = stmt.SpanStart;
-            lastEnd = stmt.Span.End;
+            if (IsGuardStatement(stmt, paramNames))
+            {
+                if (runStart < 0) runStart = stmt.SpanStart;
+                runEnd = stmt.Span.End;
+                continue;
+            }
+            if (IsBoilerplateCallStatement(stmt))
+            {
+                if (runStart >= 0)
+                {
+                    result.Add(TextSpan.FromBounds(runStart, runEnd));
+                    runStart = -1;
+                    runEnd = -1;
+                }
+                continue;
+            }
+            break;
         }
 
-        if (firstStart < 0) return false;
-        span = TextSpan.FromBounds(firstStart, lastEnd);
-        return true;
+        if (runStart >= 0)
+            result.Add(TextSpan.FromBounds(runStart, runEnd));
+        return result;
+    }
+
+    private static bool IsBoilerplateCallStatement(StatementSyntax stmt)
+    {
+        if (stmt is not ExpressionStatementSyntax es) return false;
+        var inner = es.Expression;
+        while (true)
+        {
+            switch (inner)
+            {
+                case AwaitExpressionSyntax aw: inner = aw.Expression; continue;
+                case ParenthesizedExpressionSyntax p: inner = p.Expression; continue;
+            }
+            break;
+        }
+        // Bare invocation (Foo(), x.Foo()) or null-conditional call (x?.Foo()).
+        return inner is InvocationExpressionSyntax
+            || inner is ConditionalAccessExpressionSyntax;
     }
 
     private static bool IsGuardStatement(StatementSyntax stmt, HashSet<string> paramNames)
