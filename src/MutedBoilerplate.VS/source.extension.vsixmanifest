@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
   <Metadata>
-    <Identity Id="MutedBoilerplate.VS.0a1a1a1a-0000-0000-0000-000000000002" Version="0.1.19" Language="en-US" Publisher="MutedBoilerplate" />
+    <Identity Id="MutedBoilerplate.VS.0a1a1a1a-0000-0000-0000-000000000002" Version="0.1.21" Language="en-US" Publisher="MutedBoilerplate" />
     <DisplayName>Muted Boilerplate</DisplayName>
     <Description xml:space="preserve">Visually mute boilerplate code (telemetry, logging, signatures) so meaningful logic stays prominent. Configurable styles, hotkeys, and user-defined categories.</Description>
     <MoreInfo>https://github.com/MutedBoilerplate</MoreInfo>

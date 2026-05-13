@@ -22,6 +22,9 @@
 .PARAMETER Configuration
   MSBuild configuration. Default Release.
 
+.PARAMETER OutputDir
+  Where to drop the final .vsix. Defaults to the repo's artifacts/ folder.
+
 .EXAMPLE
   .\build\pack.ps1
   .\build\pack.ps1 -Version 0.3.1
@@ -31,7 +34,8 @@
 param(
   [string]$Version,
   [string]$BaseVersion = '0.1',
-  [string]$Configuration = 'Release'
+  [string]$Configuration = 'Release',
+  [string]$OutputDir
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,6 +43,12 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 $project  = Join-Path $repoRoot 'src\MutedBoilerplate.VS\MutedBoilerplate.VS.csproj'
 $vsixDir  = Join-Path $repoRoot "src\MutedBoilerplate.VS\bin\$Configuration\net472"
+if (-not $OutputDir) {
+  $OutputDir = Join-Path $repoRoot 'artifacts'
+}
+if (-not (Test-Path $OutputDir)) {
+  New-Item -ItemType Directory -Path $OutputDir | Out-Null
+}
 
 if (-not $Version) { $Version = $env:VSIX_VERSION }
 if (-not $Version) {
@@ -75,7 +85,10 @@ if ($LASTEXITCODE -ne 0) { throw "msbuild failed with exit code $LASTEXITCODE" }
 $vsix = Get-ChildItem -Path $vsixDir -Filter '*.vsix' -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $vsix) { throw "Build succeeded but no .vsix found under $vsixDir" }
 
+$finalPath = Join-Path $OutputDir 'muted-boilerplate-vs.vsix'
+Move-Item -LiteralPath $vsix.FullName -Destination $finalPath -Force
+
 Write-Host ""
-Write-Host "==> Built: $($vsix.FullName)"
+Write-Host "==> Built: $finalPath"
 Write-Host "    Version: $Version"
-Write-Host "    Install: double-click the file, or: VSIXInstaller.exe `"$($vsix.FullName)`""
+Write-Host "    Install: double-click the file, or: VSIXInstaller.exe `"$finalPath`""
