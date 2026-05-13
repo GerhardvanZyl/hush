@@ -38,7 +38,7 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 $project  = Join-Path $repoRoot 'src\MutedBoilerplate.VS\MutedBoilerplate.VS.csproj'
-$vsixDir  = Join-Path $repoRoot "src\MutedBoilerplate.VS\bin\$Configuration"
+$vsixDir  = Join-Path $repoRoot "src\MutedBoilerplate.VS\bin\$Configuration\net472"
 
 if (-not $Version) { $Version = $env:VSIX_VERSION }
 if (-not $Version) {
