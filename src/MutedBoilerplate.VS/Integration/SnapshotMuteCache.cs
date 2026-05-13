@@ -57,6 +57,16 @@ internal sealed class SnapshotMuteCache
 
     public CachedResult? TryPeekCurrent() => Volatile.Read(ref _current);
 
+    // Bypass the typing-debounce and kick off a recompute immediately. Used
+    // when a deliberate user action (category toggle, ruleset reload) changes
+    // state — there's no flood of follow-up events to coalesce, so making the
+    // user wait 1s for the timer would feel sluggish.
+    public void RequestImmediateRefresh()
+    {
+        Volatile.Read(ref _debounceTimer)?.Change(Timeout.Infinite, Timeout.Infinite);
+        StartComputeNow();
+    }
+
     public CachedResult Get()
     {
         var snapshot = _buffer.CurrentSnapshot;

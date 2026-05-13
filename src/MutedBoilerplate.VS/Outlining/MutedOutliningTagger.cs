@@ -29,32 +29,47 @@ internal sealed class MutedOutliningTagger : ITagger<IOutliningRegionTag>
         // If the toggled category isn't AutoCollapse, nothing in the outliner
         // changes. For AutoCollapse categories we still need to reraise over
         // the affected spans so VS refreshes the outlining adornments.
+        //
+        // Enable-side fix: see MutedClassifier.OnStateChanged. The pre-toggle
+        // cache has no spans of the just-enabled category, so the per-category
+        // walk finds nothing and would otherwise raise no event. Fall back to
+        // RaiseAll() and bypass the recompute debounce so the regions appear
+        // promptly on a deliberate user toggle.
         if (e.AffectsAllCategories)
         {
             RaiseAll();
+            _cache.RequestImmediateRefresh();
             return;
         }
 
-        if (!_state.RuleSet.StyleFor(e.CategoryKey!).AutoCollapse) return;
+        if (e.CategoryKey is null || !_state.RuleSet.StyleFor(e.CategoryKey).AutoCollapse) return;
 
         var cached = _cache.TryPeekCurrent();
-        if (cached is null || cached.Spans.Length == 0)
+        if (cached is null
+            || cached.Spans.Length == 0
+            || !TryRaiseForCategory(cached, e.CategoryKey))
         {
             RaiseAll();
-            return;
         }
 
+        _cache.RequestImmediateRefresh();
+    }
+
+    private bool TryRaiseForCategory(SnapshotMuteCache.CachedResult cached, string categoryKey)
+    {
         var handler = TagsChanged;
-        if (handler is null) return;
+        if (handler is null) return true;
 
         var snap = cached.Snapshot;
         var spans = cached.Spans;
         int runStart = -1;
         int runEnd = -1;
+        bool fired = false;
+
         for (int i = 0; i < spans.Length; i++)
         {
             var s = spans[i];
-            if (!string.Equals(s.CategoryKey, e.CategoryKey, StringComparison.OrdinalIgnoreCase)) continue;
+            if (!string.Equals(s.CategoryKey, categoryKey, StringComparison.OrdinalIgnoreCase)) continue;
             var ss = s.Span.Start;
             var se = s.Span.End;
             if (runStart < 0) { runStart = ss; runEnd = se; continue; }
@@ -62,11 +77,18 @@ internal sealed class MutedOutliningTagger : ITagger<IOutliningRegionTag>
             else
             {
                 FireRange(handler, snap, runStart, runEnd);
+                fired = true;
                 runStart = ss;
                 runEnd = se;
             }
         }
-        if (runStart >= 0) FireRange(handler, snap, runStart, runEnd);
+        if (runStart >= 0)
+        {
+            FireRange(handler, snap, runStart, runEnd);
+            fired = true;
+        }
+
+        return fired;
     }
 
     private void FireRange(EventHandler<SnapshotSpanEventArgs> handler, ITextSnapshot snap, int start, int end)

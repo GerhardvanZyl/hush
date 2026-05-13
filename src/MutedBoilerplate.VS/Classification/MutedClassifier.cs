@@ -86,39 +86,51 @@ internal sealed class MutedClassifier : IClassifier
     // because Get() hasn't been called yet on the new stateVersion). Whole-
     // buffer invalidation is still used for buffer edits, ToggleAll,
     // ToggleExclusions, and RuleSet reloads.
+    //
+    // Enable-side bug fix: when a category is being ENABLED, the pre-toggle
+    // cache contains no spans of that category (state.IsEnabled filtered them
+    // out in MuteSpanProvider). Walking the cache finds nothing, so without
+    // the fallback below no ClassificationChanged event would fire and VS
+    // would never re-query — leaving the mutes invisible until the next
+    // buffer edit. Fall back to RaiseAll() in that case. We also bypass the
+    // 1s recompute debounce: this is a deliberate user action, not a typing
+    // flood, so coalescing buys us nothing and costs perceived snappiness.
     private void OnStateChanged(object? sender, MuteStateChangedEventArgs e)
     {
         if (e.AffectsAllCategories)
         {
             RaiseAll();
+            _cache.RequestImmediateRefresh();
+            return;
+        }
+
+        if (e.CategoryKey is null || ResolveClassificationName(e.CategoryKey) is null)
+        {
+            // Not a category we render — nothing to invalidate, no need to recompute.
             return;
         }
 
         var cached = _cache.TryPeekCurrent();
-        if (cached is null || cached.Spans.Length == 0)
+        if (cached is null
+            || cached.Spans.Length == 0
+            || !TryRaiseForCategory(cached, e.CategoryKey))
         {
             RaiseAll();
-            return;
         }
 
-        if (ResolveClassificationName(e.CategoryKey!) is null)
-        {
-            // No classification rendered for this category — nothing to invalidate.
-            return;
-        }
-
-        RaiseForCategory(cached, e.CategoryKey!);
+        _cache.RequestImmediateRefresh();
     }
 
-    private void RaiseForCategory(SnapshotMuteCache.CachedResult cached, string categoryKey)
+    private bool TryRaiseForCategory(SnapshotMuteCache.CachedResult cached, string categoryKey)
     {
         var handler = ClassificationChanged;
-        if (handler is null) return;
+        if (handler is null) return true;
 
         var snap = cached.Snapshot;
         var spans = cached.Spans;
         int runStart = -1;
         int runEnd = -1;
+        bool fired = false;
 
         for (int i = 0; i < spans.Length; i++)
         {
@@ -142,13 +154,19 @@ internal sealed class MutedClassifier : IClassifier
             else
             {
                 FireRange(handler, snap, runStart, runEnd);
+                fired = true;
                 runStart = ss;
                 runEnd = se;
             }
         }
 
         if (runStart >= 0)
+        {
             FireRange(handler, snap, runStart, runEnd);
+            fired = true;
+        }
+
+        return fired;
     }
 
     private void FireRange(EventHandler<ClassificationChangedEventArgs> handler,
