@@ -211,10 +211,12 @@ public sealed class GuardMatcher : IRuleMatcher
     {
         switch (expr)
         {
-            case AssignmentExpressionSyntax:
-                // Assignment-form guards (`p ??= default`, `p = p ?? default`)
-                // mutate the parameter — the user wants those left visible.
-                return false;
+            case AssignmentExpressionSyntax ax:
+                // Only the null-fallback forms qualify: `p ??= X` and `p = p ?? X`
+                // where `p` is a parameter. A plain overwrite isn't a guard, and
+                // a fallback that does real work (`p ??= GetX()`) stays visible.
+                if (!IsNullDefaultAssignmentToParameter(ax, paramNames)) return false;
+                return !InlineWorkDetector.HasInlineWorkOrMutation(ax.Right, anchor: null, semantics);
             case InvocationExpressionSyntax inv:
                 if (!IsGuardInvocation(inv, paramNames)) return false;
                 // The helper call itself is the anchor; any other invocation
@@ -223,6 +225,26 @@ public sealed class GuardMatcher : IRuleMatcher
             case ThrowExpressionSyntax:
                 return true;
         }
+        return false;
+    }
+
+    private static bool IsNullDefaultAssignmentToParameter(AssignmentExpressionSyntax ax, HashSet<string> paramNames)
+    {
+        if (ax.Left is not IdentifierNameSyntax leftId) return false;
+        var leftName = leftId.Identifier.Text;
+        if (!paramNames.Contains(leftName)) return false;
+
+        if (ax.IsKind(SyntaxKind.CoalesceAssignmentExpression)) return true;
+
+        if (ax.IsKind(SyntaxKind.SimpleAssignmentExpression)
+            && ax.Right is BinaryExpressionSyntax bin
+            && bin.IsKind(SyntaxKind.CoalesceExpression)
+            && bin.Left is IdentifierNameSyntax coalesceLeft
+            && coalesceLeft.Identifier.Text == leftName)
+        {
+            return true;
+        }
+
         return false;
     }
 

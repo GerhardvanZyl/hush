@@ -90,12 +90,37 @@ public class GuardMatcherTests
     }
 
     [Fact]
-    public void Does_not_match_null_coalesce_assignment_to_parameter()
+    public void Matches_null_coalesce_assignment_to_parameter()
     {
-        // `s ??= "default"` mutates the parameter — leave it visible rather
-        // than fold it into the guard span.
+        // `s ??= "default"` is the canonical "assign default if null" guard.
         var code = """
             class C { void M(string s) { s ??= "default"; System.Console.WriteLine(s); } }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
+        Assert.Single(spans);
+        Assert.Contains("??=", Snippet(ctx, spans[0]));
+    }
+
+    [Fact]
+    public void Matches_plain_coalesce_reassignment_to_parameter()
+    {
+        // `s = s ?? "default"` is the same null-fallback pattern as `??=`.
+        var code = """
+            class C { void M(string s) { s = s ?? "default"; System.Console.WriteLine(s); } }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
+        Assert.Single(spans);
+        Assert.Contains("s ?? \"default\"", Snippet(ctx, spans[0]));
+    }
+
+    [Fact]
+    public void Does_not_match_plain_overwrite_assignment_to_parameter()
+    {
+        // `s = "default"` is an unconditional overwrite, not a null-fallback guard.
+        var code = """
+            class C { void M(string s) { s = "default"; System.Console.WriteLine(s); } }
             """;
         var ctx = MatchContext.FromCSharp(code);
         var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
@@ -103,11 +128,11 @@ public class GuardMatcherTests
     }
 
     [Fact]
-    public void Does_not_match_plain_coalesce_reassignment_to_parameter()
+    public void Does_not_match_null_coalesce_assignment_with_inline_work()
     {
-        // `s = s ?? "default"` is a mutation; same reasoning as the ??= case.
+        // `s ??= GetDefault()` invokes user code on the fallback — real work.
         var code = """
-            class C { void M(string s) { s = s ?? "default"; System.Console.WriteLine(s); } }
+            class C { void M(string s) { s ??= GetDefault(); System.Console.WriteLine(s); } string GetDefault() => "x"; }
             """;
         var ctx = MatchContext.FromCSharp(code);
         var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
@@ -138,11 +163,10 @@ public class GuardMatcherTests
     }
 
     [Fact]
-    public void Assignment_form_mutation_ends_the_guard_run()
+    public void Null_coalesce_assignment_is_folded_into_guard_run()
     {
-        // `b ??= ""` is no longer a guard — it mutates. The two preceding
-        // if-throw guards are still coalesced, and detection stops there
-        // (the mutation isn't a transparent boilerplate call either).
+        // `b ??= ""` is a null-fallback guard, so it joins the preceding
+        // if-throw guards in a single span.
         var code = """
             class C
             {
@@ -161,7 +185,38 @@ public class GuardMatcherTests
         var snippet = Snippet(ctx, spans[0]);
         Assert.Contains("if (a ==", snippet);
         Assert.Contains("if (b ==", snippet);
-        Assert.DoesNotContain("??=", snippet);
+        Assert.Contains("??=", snippet);
+        Assert.DoesNotContain("WriteLine", snippet);
+    }
+
+    [Fact]
+    public void Matches_throw_if_null_then_coalesce_then_if_throw_with_nameof()
+    {
+        // Mirrors the WeatherForecastController shape: an `ArgumentNullException.ThrowIfNull`,
+        // a `p ??= literal` null-fallback, and an `if (x out of range) throw new ArgumentOutOfRangeException(nameof(x), ...)`
+        // all sitting at the top of a method — every site should be folded into a single guard span.
+        var code = """
+            class C
+            {
+                void M(string postCode, int numberOfDays)
+                {
+                    System.ArgumentNullException.ThrowIfNull(postCode);
+                    postCode ??= "0000";
+                    if (numberOfDays < 1 || numberOfDays > 10)
+                    {
+                        throw new System.ArgumentOutOfRangeException(nameof(numberOfDays), "out of range");
+                    }
+                    System.Console.WriteLine(postCode);
+                }
+            }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
+        Assert.Single(spans);
+        var snippet = Snippet(ctx, spans[0]);
+        Assert.Contains("ThrowIfNull(postCode)", snippet);
+        Assert.Contains("??=", snippet);
+        Assert.Contains("ArgumentOutOfRangeException", snippet);
         Assert.DoesNotContain("WriteLine", snippet);
     }
 
