@@ -90,34 +90,59 @@ public class GuardMatcherTests
     }
 
     [Fact]
-    public void Matches_null_coalesce_assignment_to_parameter()
+    public void Does_not_match_null_coalesce_assignment_to_parameter()
     {
+        // `s ??= "default"` mutates the parameter — leave it visible rather
+        // than fold it into the guard span.
         var code = """
             class C { void M(string s) { s ??= "default"; System.Console.WriteLine(s); } }
             """;
         var ctx = MatchContext.FromCSharp(code);
         var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
-        Assert.Single(spans);
-        Assert.Contains("s ??=", Snippet(ctx, spans[0]));
+        Assert.Empty(spans);
     }
 
     [Fact]
-    public void Matches_plain_coalesce_reassignment_to_parameter()
+    public void Does_not_match_plain_coalesce_reassignment_to_parameter()
     {
+        // `s = s ?? "default"` is a mutation; same reasoning as the ??= case.
         var code = """
             class C { void M(string s) { s = s ?? "default"; System.Console.WriteLine(s); } }
             """;
         var ctx = MatchContext.FromCSharp(code);
         var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
-        Assert.Single(spans);
-        var snippet = Snippet(ctx, spans[0]);
-        Assert.Contains("s = s ??", snippet);
-        Assert.DoesNotContain("WriteLine", snippet);
+        Assert.Empty(spans);
     }
 
     [Fact]
     public void Coalesces_contiguous_guards_into_single_span()
     {
+        var code = """
+            class C
+            {
+                void M(string a, string b)
+                {
+                    if (a == null) throw new System.ArgumentNullException(nameof(a));
+                    if (b == null) throw new System.ArgumentNullException(nameof(b));
+                    System.Console.WriteLine(a + b);
+                }
+            }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
+        Assert.Single(spans);
+        var snippet = Snippet(ctx, spans[0]);
+        Assert.Contains("if (a ==", snippet);
+        Assert.Contains("if (b ==", snippet);
+        Assert.DoesNotContain("WriteLine", snippet);
+    }
+
+    [Fact]
+    public void Assignment_form_mutation_ends_the_guard_run()
+    {
+        // `b ??= ""` is no longer a guard — it mutates. The two preceding
+        // if-throw guards are still coalesced, and detection stops there
+        // (the mutation isn't a transparent boilerplate call either).
         var code = """
             class C
             {
@@ -136,7 +161,7 @@ public class GuardMatcherTests
         var snippet = Snippet(ctx, spans[0]);
         Assert.Contains("if (a ==", snippet);
         Assert.Contains("if (b ==", snippet);
-        Assert.Contains("b ??=", snippet);
+        Assert.DoesNotContain("??=", snippet);
         Assert.DoesNotContain("WriteLine", snippet);
     }
 
@@ -410,15 +435,17 @@ public class GuardMatcherTests
     }
 
     [Fact]
-    public void Matches_return_array_empty_guard()
+    public void Does_not_match_return_array_empty_guard()
     {
+        // `Array.Empty<int>()` is a method call. Under the "don't mute lines
+        // that call a method inline" rule this no longer counts as a guard,
+        // even though it's effectively a literal — keep it visible.
         var code = """
             class C { int[] M(int[] xs) { if (xs == null) return System.Array.Empty<int>(); return xs; } }
             """;
         var ctx = MatchContext.FromCSharp(code);
         var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
-        Assert.Single(spans);
-        Assert.Contains("Array.Empty", Snippet(ctx, spans[0]));
+        Assert.Empty(spans);
     }
 
     [Fact]
@@ -480,5 +507,109 @@ public class GuardMatcherTests
         state.Set(MuteCategory.GuardsKey, false);
         var spans = MuteSpanProvider.CreateDefault().GetSpans(ctx, state, rs).ToList();
         Assert.DoesNotContain(spans, s => s.CategoryKey == MuteCategory.GuardsKey);
+    }
+
+    [Fact]
+    public void Does_not_match_guard_helper_with_inline_method_argument()
+    {
+        // `ResolveParamName()` is real work — keep the guard visible.
+        var code = """
+            class C
+            {
+                void M(string name)
+                {
+                    Guard.Against.Null(name, ResolveParamName());
+                    Do(name);
+                }
+                string ResolveParamName() => "name";
+                void Do(string s) {}
+            }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
+        Assert.Empty(spans);
+    }
+
+    [Fact]
+    public void Does_not_match_if_throw_when_exception_constructor_calls_method_inline()
+    {
+        var code = """
+            class C
+            {
+                void M(string x)
+                {
+                    if (x == null) throw new System.ArgumentNullException(ResolveParamName());
+                    Use(x);
+                }
+                string ResolveParamName() => "x";
+                void Use(string s) {}
+            }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
+        Assert.Empty(spans);
+    }
+
+    [Fact]
+    public void Does_not_match_guard_helper_with_user_get_method_argument()
+    {
+        // Only BCL `Get*` methods are exempt. A user-defined `h.GetName()`
+        // is unknown work and disqualifies the guard.
+        var code = """
+            class C
+            {
+                void M(Holder h)
+                {
+                    Guard.Against.Null(h, h.GetName());
+                    Do(h);
+                }
+                void Do(Holder h) {}
+            }
+            class Holder { public string GetName() => "x"; }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
+        Assert.Empty(spans);
+    }
+
+    [Fact]
+    public void Matches_if_throw_when_constructor_args_use_getter()
+    {
+        // `obj.GetType().Name` — GetType is exempt, .Name is property access.
+        var code = """
+            class C
+            {
+                void M(object x)
+                {
+                    if (x == null) throw new System.ArgumentNullException(x.GetType().Name);
+                    Use(x);
+                }
+                void Use(object o) {}
+            }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
+        Assert.Single(spans);
+        Assert.Contains("if (x == null)", Snippet(ctx, spans[0]));
+    }
+
+    [Fact]
+    public void Does_not_match_if_throw_when_body_mutates()
+    {
+        var code = """
+            class C
+            {
+                int _errors;
+                void M(string x)
+                {
+                    if (x == null) { _errors++; throw new System.ArgumentNullException(nameof(x)); }
+                    Use(x);
+                }
+                void Use(string s) {}
+            }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
+        Assert.Empty(spans);
     }
 }

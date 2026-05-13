@@ -20,9 +20,22 @@ public sealed class RoslynCallMatcher : IRuleMatcher
         foreach (var inv in root.DescendantNodes().OfType<InvocationExpressionSyntax>())
         {
             if (!TryMatch(inv, pattern, ctx.Semantics)) continue;
+            if (!ShouldMuteInvocation(inv, ctx.Semantics)) continue;
             var span = ScopeResolver.Resolve(inv, rule.Scope);
             yield return new MuteSpan(span, rule.Category, rule.Name, rule.Scope);
         }
+    }
+
+    // A call site is kept visible (not muted) when its enclosing statement does
+    // real work beyond the matched call itself: an assignment, an ++/-- mutation,
+    // or another method invocation in the receiver chain or arguments. This is
+    // applied to mute rules only — exclusion-pattern matching keeps using
+    // TryMatch directly so an exclusion still vetoes a candidate regardless of
+    // whether its arguments contain inline work.
+    internal static bool ShouldMuteInvocation(InvocationExpressionSyntax inv, SemanticModel? semantics)
+    {
+        SyntaxNode scope = inv.FirstAncestorOrSelf<StatementSyntax>() ?? (SyntaxNode)inv;
+        return !InlineWorkDetector.HasInlineWorkOrMutation(scope, inv, semantics);
     }
 
     internal static bool TryMatch(InvocationExpressionSyntax inv, RulePattern pattern, SemanticModel? semantics)

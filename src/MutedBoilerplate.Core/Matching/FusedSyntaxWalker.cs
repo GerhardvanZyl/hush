@@ -93,11 +93,18 @@ internal sealed class FusedSyntaxWalker : CSharpSyntaxWalker
 
         if (hasCallRules || hasCallExclusions)
         {
+            // Cache the "should mute?" answer for this invocation across all
+            // rules — the answer is rule-independent (depends only on the
+            // surrounding statement) and the walk is cheap to skip when no
+            // rule matched.
+            bool? shouldMute = null;
             for (int i = 0; i < _callRules.Count; i++)
             {
                 var rule = _callRules[i];
                 if (RoslynCallMatcher.TryMatch(node, rule.Pattern, _semantics))
                 {
+                    shouldMute ??= RoslynCallMatcher.ShouldMuteInvocation(node, _semantics);
+                    if (!shouldMute.Value) continue;
                     var span = ScopeResolver.Resolve(node, rule.Scope);
                     _spanOutput.Add((rule, new MuteSpan(span, rule.Category, rule.Name, rule.Scope)));
                 }
@@ -205,7 +212,7 @@ internal sealed class FusedSyntaxWalker : CSharpSyntaxWalker
 
         if (_guardRules.Count > 0)
         {
-            var guardSpans = GuardMatcher.Detect(method);
+            var guardSpans = GuardMatcher.Detect(method, _semantics);
             for (int s = 0; s < guardSpans.Count; s++)
             {
                 var guardSpan = guardSpans[s];

@@ -26,12 +26,12 @@ public sealed class GuardMatcher : IRuleMatcher
         var root = ctx.Tree.GetRoot();
         foreach (var method in root.DescendantNodes().OfType<BaseMethodDeclarationSyntax>())
         {
-            foreach (var span in Detect(method))
+            foreach (var span in Detect(method, ctx.Semantics))
                 yield return new MuteSpan(span, rule.Category, rule.Name, rule.Scope);
         }
     }
 
-    public static List<TextSpan> Detect(BaseMethodDeclarationSyntax method)
+    public static List<TextSpan> Detect(BaseMethodDeclarationSyntax method, SemanticModel? semantics = null)
     {
         var result = new List<TextSpan>();
         var body = method.Body;
@@ -58,7 +58,7 @@ public sealed class GuardMatcher : IRuleMatcher
         int runEnd = -1;
         foreach (var stmt in body.Statements)
         {
-            if (IsGuardStatement(stmt, paramNames))
+            if (IsGuardStatement(stmt, paramNames, semantics))
             {
                 if (runStart < 0) runStart = stmt.SpanStart;
                 runEnd = stmt.Span.End;
@@ -100,14 +100,18 @@ public sealed class GuardMatcher : IRuleMatcher
             || inner is ConditionalAccessExpressionSyntax;
     }
 
-    private static bool IsGuardStatement(StatementSyntax stmt, HashSet<string> paramNames)
+    private static bool IsGuardStatement(StatementSyntax stmt, HashSet<string> paramNames, SemanticModel? semantics)
     {
         switch (stmt)
         {
             case IfStatementSyntax ifs:
-                return IsGuardIf(ifs, paramNames);
+                if (!IsGuardIf(ifs, paramNames)) return false;
+                // An if-throw guard that mutates a value or calls a method
+                // inline (beyond the throw's constructor and nameof) is doing
+                // real work — keep it visible.
+                return !InlineWorkDetector.HasInlineWorkOrMutation(ifs, anchor: null, semantics);
             case ExpressionStatementSyntax es:
-                return IsGuardExpression(es.Expression, paramNames);
+                return IsGuardExpression(es.Expression, paramNames, semantics);
             default:
                 return false;
         }
@@ -203,16 +207,19 @@ public sealed class GuardMatcher : IRuleMatcher
         _ => null,
     };
 
-    private static bool IsGuardExpression(ExpressionSyntax expr, HashSet<string> paramNames)
+    private static bool IsGuardExpression(ExpressionSyntax expr, HashSet<string> paramNames, SemanticModel? semantics)
     {
         switch (expr)
         {
-            case AssignmentExpressionSyntax ax:
-                // Assigning an alternative to an input parameter — covers
-                // `p = p ?? default`, `p ??= default`, and plain overwrites.
-                return IsParameterReference(ax.Left, paramNames);
+            case AssignmentExpressionSyntax:
+                // Assignment-form guards (`p ??= default`, `p = p ?? default`)
+                // mutate the parameter — the user wants those left visible.
+                return false;
             case InvocationExpressionSyntax inv:
-                return IsGuardInvocation(inv, paramNames);
+                if (!IsGuardInvocation(inv, paramNames)) return false;
+                // The helper call itself is the anchor; any other invocation
+                // or assignment inside its arguments is real work.
+                return !InlineWorkDetector.HasInlineWorkOrMutation(inv, anchor: inv, semantics);
             case ThrowExpressionSyntax:
                 return true;
         }
@@ -254,9 +261,6 @@ public sealed class GuardMatcher : IRuleMatcher
         }
         return false;
     }
-
-    private static bool IsParameterReference(ExpressionSyntax expr, HashSet<string> paramNames) =>
-        expr is IdentifierNameSyntax idn && paramNames.Contains(idn.Identifier.Text);
 
     private static bool ReferencesParameter(ExpressionSyntax expr, HashSet<string> paramNames)
     {
