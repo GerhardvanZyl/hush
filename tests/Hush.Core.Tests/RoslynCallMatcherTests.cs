@@ -319,4 +319,117 @@ public class RoslynCallMatcherTests
         var spans = new RoslynCallMatcher().Match(TestRuleSet.LoggerCallRule(), ctx).ToList();
         Assert.Empty(spans);
     }
+
+    private static Hush.Core.Rules.MuteRule HasListenersRule() => new()
+    {
+        Name = "activity-source",
+        Category = MuteCategory.TelemetryKey,
+        Kind = Hush.Core.Rules.RuleKind.RoslynCall,
+        Pattern = new Hush.Core.Rules.RulePattern { ReceiverTypeGlob = "ActivitySource", MethodNameGlob = "HasListeners" },
+        Scope = MuteScope.WholeStatement,
+    };
+
+    [Fact]
+    public void Does_not_match_when_call_is_inside_if_condition()
+    {
+        // A matched call inside an `if` condition feeds control flow — muting
+        // the whole `if` statement would hide both the condition logic and the
+        // body. The user reported this for ActivitySource.HasListeners().
+        var code = """
+            using System.Diagnostics;
+            class C
+            {
+                object M(ActivitySource activitySource, bool flag)
+                {
+                    if (!activitySource.HasListeners() && !flag)
+                    {
+                        return null;
+                    }
+                    return new object();
+                }
+            }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new RoslynCallMatcher().Match(HasListenersRule(), ctx).ToList();
+        Assert.Empty(spans);
+    }
+
+    [Fact]
+    public void Does_not_match_when_call_is_inside_while_condition()
+    {
+        var code = """
+            using System.Diagnostics;
+            class C
+            {
+                void M(ActivitySource activitySource)
+                {
+                    while (activitySource.HasListeners())
+                    {
+                        Work();
+                    }
+                }
+                void Work() { }
+            }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new RoslynCallMatcher().Match(HasListenersRule(), ctx).ToList();
+        Assert.Empty(spans);
+    }
+
+    [Fact]
+    public void Does_not_match_when_call_is_inside_ternary_condition()
+    {
+        var code = """
+            using System.Diagnostics;
+            class C
+            {
+                int M(ActivitySource activitySource) => activitySource.HasListeners() ? 1 : 0;
+            }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new RoslynCallMatcher().Match(HasListenersRule(), ctx).ToList();
+        Assert.Empty(spans);
+    }
+
+    [Fact]
+    public void Does_not_match_when_call_is_inside_switch_expression_governing()
+    {
+        var code = """
+            using System.Diagnostics;
+            class C
+            {
+                void M(ActivitySource activitySource)
+                {
+                    switch (activitySource.HasListeners())
+                    {
+                        case true: Work(); break;
+                    }
+                }
+                void Work() { }
+            }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new RoslynCallMatcher().Match(HasListenersRule(), ctx).ToList();
+        Assert.Empty(spans);
+    }
+
+    [Fact]
+    public void Still_matches_bare_call_outside_a_condition()
+    {
+        // Sanity guard for the predicate-gate fix: a fire-and-forget
+        // expression-statement still mutes as before.
+        var code = """
+            using System.Diagnostics;
+            class C
+            {
+                void M(ActivitySource activitySource)
+                {
+                    activitySource.HasListeners();
+                }
+            }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new RoslynCallMatcher().Match(HasListenersRule(), ctx).ToList();
+        Assert.Single(spans);
+    }
 }

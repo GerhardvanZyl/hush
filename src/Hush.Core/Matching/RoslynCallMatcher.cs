@@ -34,8 +34,36 @@ public sealed class RoslynCallMatcher : IRuleMatcher
     // whether its arguments contain inline work.
     internal static bool ShouldMuteInvocation(InvocationExpressionSyntax inv, SemanticModel? semantics)
     {
+        // The call's value feeds an if/while/do/for/switch/?: predicate — the
+        // surrounding statement is meaningful control flow, not boilerplate,
+        // and a `wholeStatement` mute would hide the body too.
+        if (IsInsideControlFlowPredicate(inv)) return false;
         SyntaxNode scope = inv.FirstAncestorOrSelf<StatementSyntax>() ?? (SyntaxNode)inv;
         return !InlineWorkDetector.HasInlineWorkOrMutation(scope, inv, semantics);
+    }
+
+    private static bool IsInsideControlFlowPredicate(SyntaxNode start)
+    {
+        SyntaxNode current = start;
+        while (current.Parent is { } parent)
+        {
+            if (parent is ConditionalExpressionSyntax ce && ce.Condition == current)
+                return true;
+            if (parent is StatementSyntax)
+            {
+                return parent switch
+                {
+                    IfStatementSyntax ifs => ifs.Condition == current,
+                    WhileStatementSyntax ws => ws.Condition == current,
+                    DoStatementSyntax ds => ds.Condition == current,
+                    ForStatementSyntax fs => fs.Condition == current,
+                    SwitchStatementSyntax sws => sws.Expression == current,
+                    _ => false,
+                };
+            }
+            current = parent;
+        }
+        return false;
     }
 
     internal static bool TryMatch(InvocationExpressionSyntax inv, RulePattern pattern, SemanticModel? semantics)
