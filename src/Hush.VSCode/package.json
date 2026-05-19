@@ -1,0 +1,361 @@
+{
+  "name": "hush-vscode",
+  "displayName": "Hush",
+  "description": "Hush — visually quiet the boilerplate (telemetry, logging, signatures, guards) so the meaningful code stays loud.",
+  "version": "0.1.0",
+  "publisher": "GerhardVanZyl",
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onLanguage:csharp",
+    "onLanguage:typescript",
+    "onLanguage:typescriptreact",
+    "onLanguage:javascript",
+    "onLanguage:javascriptreact"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "hush.toggleTelemetry",
+        "title": "Hush: Toggle Telemetry"
+      },
+      {
+        "command": "hush.toggleLogging",
+        "title": "Hush: Toggle Logging"
+      },
+      {
+        "command": "hush.toggleSignature",
+        "title": "Hush: Toggle Signature"
+      },
+      {
+        "command": "hush.toggleGuards",
+        "title": "Hush: Toggle Guards"
+      },
+      {
+        "command": "hush.toggleAll",
+        "title": "Hush: Toggle All"
+      },
+      {
+        "command": "hush.toggleExclusions",
+        "title": "Hush: Toggle Exclusions"
+      },
+      {
+        "command": "hush.toggleUser1",
+        "title": "Hush: Toggle User Slot 1"
+      },
+      {
+        "command": "hush.toggleUser2",
+        "title": "Hush: Toggle User Slot 2"
+      },
+      {
+        "command": "hush.toggleUser3",
+        "title": "Hush: Toggle User Slot 3"
+      },
+      {
+        "command": "hush.toggleUser4",
+        "title": "Hush: Toggle User Slot 4"
+      },
+      {
+        "command": "hush.toggleUser5",
+        "title": "Hush: Toggle User Slot 5"
+      },
+      {
+        "command": "hush.toggleUser6",
+        "title": "Hush: Toggle User Slot 6"
+      },
+      {
+        "command": "hush.toggleUser7",
+        "title": "Hush: Toggle User Slot 7"
+      },
+      {
+        "command": "hush.toggleUser8",
+        "title": "Hush: Toggle User Slot 8"
+      },
+      {
+        "command": "hush.reloadRules",
+        "title": "Hush: Reload Rules"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "hush.toggleTelemetry",
+        "key": "ctrl+alt+m t",
+        "mac": "cmd+alt+m t",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "hush.toggleLogging",
+        "key": "ctrl+alt+m l",
+        "mac": "cmd+alt+m l",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "hush.toggleSignature",
+        "key": "ctrl+alt+m s",
+        "mac": "cmd+alt+m s",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "hush.toggleGuards",
+        "key": "ctrl+alt+m g",
+        "mac": "cmd+alt+m g",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "hush.toggleAll",
+        "key": "ctrl+alt+m a",
+        "mac": "cmd+alt+m a",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "hush.toggleExclusions",
+        "key": "ctrl+alt+m x",
+        "mac": "cmd+alt+m x",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "hush.toggleUser1",
+        "key": "ctrl+alt+m 1",
+        "mac": "cmd+alt+m 1",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "hush.toggleUser2",
+        "key": "ctrl+alt+m 2",
+        "mac": "cmd+alt+m 2",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "hush.toggleUser3",
+        "key": "ctrl+alt+m 3",
+        "mac": "cmd+alt+m 3",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "hush.toggleUser4",
+        "key": "ctrl+alt+m 4",
+        "mac": "cmd+alt+m 4",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "hush.toggleUser5",
+        "key": "ctrl+alt+m 5",
+        "mac": "cmd+alt+m 5",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "hush.toggleUser6",
+        "key": "ctrl+alt+m 6",
+        "mac": "cmd+alt+m 6",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "hush.toggleUser7",
+        "key": "ctrl+alt+m 7",
+        "mac": "cmd+alt+m 7",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "hush.toggleUser8",
+        "key": "ctrl+alt+m 8",
+        "mac": "cmd+alt+m 8",
+        "when": "editorTextFocus"
+      }
+    ],
+    "colors": [
+      {
+        "id": "hush.telemetry.foreground",
+        "description": "Foreground for muted telemetry calls.",
+        "defaults": {
+          "dark": "#7A7A7A",
+          "light": "#9A9A9A",
+          "highContrast": "#A0A0A0",
+          "highContrastLight": "#606060"
+        }
+      },
+      {
+        "id": "hush.logging.foreground",
+        "description": "Foreground for muted logging calls.",
+        "defaults": {
+          "dark": "#888888",
+          "light": "#A0A0A0",
+          "highContrast": "#A8A8A8",
+          "highContrastLight": "#666666"
+        }
+      },
+      {
+        "id": "hush.signature.foreground",
+        "description": "Foreground for muted method signatures.",
+        "defaults": {
+          "dark": "#9A9A9A",
+          "light": "#888888",
+          "highContrast": "#B0B0B0",
+          "highContrastLight": "#555555"
+        }
+      },
+      {
+        "id": "hush.guards.foreground",
+        "description": "Foreground for muted parameter guards.",
+        "defaults": {
+          "dark": "#C2C9BE",
+          "light": "#5A6358",
+          "highContrast": "#D4DCD2",
+          "highContrastLight": "#3A4239"
+        }
+      },
+      {
+        "id": "hush.user1.foreground",
+        "description": "Foreground for muted user slot 1.",
+        "defaults": {
+          "dark": "#8A8A8A",
+          "light": "#9A9A9A",
+          "highContrast": "#B0B0B0",
+          "highContrastLight": "#5A5A5A"
+        }
+      },
+      {
+        "id": "hush.user2.foreground",
+        "description": "Foreground for muted user slot 2.",
+        "defaults": {
+          "dark": "#8A8A8A",
+          "light": "#9A9A9A",
+          "highContrast": "#B0B0B0",
+          "highContrastLight": "#5A5A5A"
+        }
+      },
+      {
+        "id": "hush.user3.foreground",
+        "description": "Foreground for muted user slot 3.",
+        "defaults": {
+          "dark": "#8A8A8A",
+          "light": "#9A9A9A",
+          "highContrast": "#B0B0B0",
+          "highContrastLight": "#5A5A5A"
+        }
+      },
+      {
+        "id": "hush.user4.foreground",
+        "description": "Foreground for muted user slot 4.",
+        "defaults": {
+          "dark": "#8A8A8A",
+          "light": "#9A9A9A",
+          "highContrast": "#B0B0B0",
+          "highContrastLight": "#5A5A5A"
+        }
+      },
+      {
+        "id": "hush.user5.foreground",
+        "description": "Foreground for muted user slot 5.",
+        "defaults": {
+          "dark": "#8A8A8A",
+          "light": "#9A9A9A",
+          "highContrast": "#B0B0B0",
+          "highContrastLight": "#5A5A5A"
+        }
+      },
+      {
+        "id": "hush.user6.foreground",
+        "description": "Foreground for muted user slot 6.",
+        "defaults": {
+          "dark": "#8A8A8A",
+          "light": "#9A9A9A",
+          "highContrast": "#B0B0B0",
+          "highContrastLight": "#5A5A5A"
+        }
+      },
+      {
+        "id": "hush.user7.foreground",
+        "description": "Foreground for muted user slot 7.",
+        "defaults": {
+          "dark": "#8A8A8A",
+          "light": "#9A9A9A",
+          "highContrast": "#B0B0B0",
+          "highContrastLight": "#5A5A5A"
+        }
+      },
+      {
+        "id": "hush.user8.foreground",
+        "description": "Foreground for muted user slot 8.",
+        "defaults": {
+          "dark": "#8A8A8A",
+          "light": "#9A9A9A",
+          "highContrast": "#B0B0B0",
+          "highContrastLight": "#5A5A5A"
+        }
+      }
+    ],
+    "configuration": {
+      "title": "Hush",
+      "properties": {
+        "hush.rulesPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional path to a custom rules JSON file. Empty = use the embedded defaults."
+        },
+        "hush.exclusionsEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "When true, exclusion rules can veto candidate mutes (e.g., a logger call inside a guard block)."
+        },
+        "hush.categories.telemetry.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Mute telemetry calls (Application Insights, Activity, Metrics)."
+        },
+        "hush.categories.logging.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Mute logging calls (ILogger, Serilog, Console, Trace)."
+        },
+        "hush.categories.signature.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Mute method signatures. Off by default — the built-in rule mutes every signature, which is too aggressive for most code. Toggle with Ctrl+Alt+M, S."
+        },
+        "hush.categories.guards.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Mute parameter guard expressions."
+        },
+        "hush.autoCollapse": {
+          "type": "boolean",
+          "default": true,
+          "description": "Auto-collapse muted regions whose category has autoCollapse=true in the ruleset."
+        },
+        "hush.debounceMs": {
+          "type": "number",
+          "default": 200,
+          "minimum": 0,
+          "maximum": 2000,
+          "description": "Debounce window (ms) between document edits and decoration refresh."
+        },
+        "hush.sidecarPath": {
+          "type": "string",
+          "default": "",
+          "description": "Override path to the .NET sidecar executable. Empty = use the bundled binary for this platform."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.config.js --production",
+    "watch": "node esbuild.config.js --watch",
+    "compile": "tsc -p ."
+  },
+  "dependencies": {
+    "vscode-jsonrpc": "^8.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.9.3"
+  }
+}

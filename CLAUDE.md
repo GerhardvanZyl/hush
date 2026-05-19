@@ -13,12 +13,12 @@ Read `DEVELOPING.md` before debugging or tuning performance — it records the n
 Core + tests build with the `dotnet` CLI:
 
 ```sh
-dotnet test tests/MutedBoilerplate.Core.Tests
+dotnet test tests/Hush.Core.Tests
 # single test
-dotnet test tests/MutedBoilerplate.Core.Tests --filter FullyQualifiedName~RoslynCallMatcherTests
+dotnet test tests/Hush.Core.Tests --filter FullyQualifiedName~RoslynCallMatcherTests
 ```
 
-The VSIX project (`src/MutedBoilerplate.VS`) builds the assembly under CLI MSBuild, but **producing a reliable `.vsix` container requires Visual Studio 2022/2026 with the *Visual Studio extension development* workload** — open `vs-ext-muted-boilerplate.sln` and build, or press F5 to launch the experimental hive (`/rootsuffix Exp`) with the extension deployed.
+The VSIX project (`src/Hush.VS`) builds the assembly under CLI MSBuild, but **producing a reliable `.vsix` container requires Visual Studio 2022/2026 with the *Visual Studio extension development* workload** — open `vs-ext-hush.sln` and build, or press F5 to launch the experimental hive (`/rootsuffix Exp`) with the extension deployed.
 
 Version-stamped release packaging: `build/pack.ps1` (derives version from git commit count, preserves VSIX Identity so VSIXInstaller treats it as an upgrade).
 
@@ -26,9 +26,9 @@ Version-stamped release packaging: `build/pack.ps1` (derives version from git co
 
 Three assemblies, strict layering:
 
-- `src/MutedBoilerplate.Core/` — `netstandard2.0`, depends only on `Microsoft.CodeAnalysis.CSharp` and `System.Text.Json`. Contains rule models (`RuleSet`, `MuteRule`, `ExclusionRule`), matchers (`RoslynCallMatcher`, `SignatureMatcher`, `RegexMatcher`, `IdentifierMatcher`, `GuardMatcher`), the `ExclusionEvaluator`, and the `IMuteSpanProvider` seam. Default rules are embedded as `Rules/DefaultRules.json`.
-- `src/MutedBoilerplate.VS/` — `net472` VSIX. MEF-exports the classifier and outlining tagger, registers the `AsyncPackage`, options page, and VSCT command set. `Integration/BufferDocumentAdapter` is the only code that translates `ITextBuffer` → Roslyn `Document`/`SyntaxTree` via the live workspace.
-- `tests/MutedBoilerplate.Core.Tests/` — xUnit on `net8.0` against the `netstandard2.0` Core. `Fixtures/**/*.cs` are deliberately excluded from compile; they're sample files copied next to the test assembly for manual F5 testing.
+- `src/Hush.Core/` — `netstandard2.0`, depends only on `Microsoft.CodeAnalysis.CSharp` and `System.Text.Json`. Contains rule models (`RuleSet`, `MuteRule`, `ExclusionRule`), matchers (`RoslynCallMatcher`, `SignatureMatcher`, `RegexMatcher`, `IdentifierMatcher`, `GuardMatcher`), the `ExclusionEvaluator`, and the `IMuteSpanProvider` seam. Default rules are embedded as `Rules/DefaultRules.json`.
+- `src/Hush.VS/` — `net472` VSIX. MEF-exports the classifier and outlining tagger, registers the `AsyncPackage`, options page, and VSCT command set. `Integration/BufferDocumentAdapter` is the only code that translates `ITextBuffer` → Roslyn `Document`/`SyntaxTree` via the live workspace.
+- `tests/Hush.Core.Tests/` — xUnit on `net8.0` against the `netstandard2.0` Core. `Fixtures/**/*.cs` are deliberately excluded from compile; they're sample files copied next to the test assembly for manual F5 testing.
 
 Data flow:
 
@@ -37,8 +37,8 @@ ITextBuffer → BufferDocumentAdapter → MatchContext
            → MuteSpanProvider.GetSpans(ctx, state, ruleSet)
              (IRuleMatcher[] + ExclusionEvaluator + MuteState filter)
            → MuteSpan[]
-             → MutedClassifier (ClassificationSpans)
-             → MutedOutliningTagger (IsDefaultCollapsed)
+             → HushClassifier (ClassificationSpans)
+             → HushOutliningTagger (IsDefaultCollapsed)
 ```
 
 **The Core/VS seam is `IMuteSpanProvider`.** Don't leak VS types into Core — that boundary is what lets a future VS Code host reuse the matching engine.
@@ -69,22 +69,22 @@ User-slot hotkeys (`Ctrl+Alt+M, 1..8`) bind to user-defined categories via `Opti
 
 ## VSIX build pitfalls (don't "fix" these without reading DEVELOPING.md)
 
-These are already done correctly in `src/MutedBoilerplate.VS/MutedBoilerplate.VS.csproj` and removing them will silently break the build:
+These are already done correctly in `src/Hush.VS/Hush.VS.csproj` and removing them will silently break the build:
 
 - The csproj uses **explicit `<Import Sdk.props/>` … `<Import Sdk.targets/>` form** (not `<Project Sdk="...">`) so the VsSDK targets Import runs *after* `Sdk.targets`. Otherwise `Microsoft.NET.Sdk.targets` overwrites `$(PrepareForRunDependsOn)` and `CreateVsixContainer` never hooks in — you get a DLL but no `.vsix`.
 - `Microsoft.VSSDK.BuildTools` is **pinned to 17.14.x**; 18.x targets .NET 10 and won't load under VS's .NET Framework MSBuild.
 - The VsSDK real targets are imported explicitly from `$(NuGetPackageRoot)microsoft.vssdk.buildtools\<version>\tools\VSSDK\Microsoft.VsSDK.targets` — the auto-imported `build/...targets` only sets env vars.
 - The `_MutedVsixIntermediate` PropertyGroup pins `FileManifest`, `ResourceManifest`, `CtoFileManifest` etc. because VsSDK evaluates them against `$(IntermediateOutputPath)` before the SDK populates it — without this they land at the drive root and the build fails with VSSDK1207.
-- `<UseCodebase>true</UseCodebase>` is required so the generated `.pkgdef` includes a `CodeBase` entry; without it VS loads the package from `Common7\IDE\` and fails with "Could not load file or assembly 'MutedBoilerplate.VS'".
+- `<UseCodebase>true</UseCodebase>` is required so the generated `.pkgdef` includes a `CodeBase` entry; without it VS loads the package from `Common7\IDE\` and fails with "Could not load file or assembly 'Hush.VS'".
 
 ## Where things land at runtime
 
-- VSIX output: `src/MutedBoilerplate.VS/bin/Debug/net472/MutedBoilerplate.VS.vsix`
-- Experimental hive install (F5 overwrites): `%LOCALAPPDATA%\Microsoft\VisualStudio\18.0_*Exp\Extensions\MutedBoilerplate\Muted Boilerplate\<version>\`
+- VSIX output: `src/Hush.VS/bin/Debug/net472/Hush.VS.vsix`
+- Experimental hive install (F5 overwrites): `%LOCALAPPDATA%\Microsoft\VisualStudio\18.0_*Exp\Extensions\Hush\Hush\<version>\`
 - Activity log (diagnose package load failures): `%APPDATA%\Microsoft\VisualStudio\18.0_*Exp\ActivityLog.xml` — package GUID is `7B4B1D6C-1F0A-4D4F-9E1D-1A6B5B0A2E10`.
 
 ## Where to fix bugs
 
-- Matching / classification correctness → fix in `MutedBoilerplate.Core` and add an xUnit test under `tests/MutedBoilerplate.Core.Tests`. Don't push matcher logic into the VS layer.
-- Editor behavior / redraw / tagger issues → `MutedBoilerplate.VS/Classification` or `Outlining`. Check `MuteStateService.Changed` is firing before blaming the matcher.
-- Hotkey not firing → VSCT command IDs in `MutedBoilerplateCommands.vsct` must match `Constants.cs`; editor-context-only firing is by design.
+- Matching / classification correctness → fix in `Hush.Core` and add an xUnit test under `tests/Hush.Core.Tests`. Don't push matcher logic into the VS layer.
+- Editor behavior / redraw / tagger issues → `Hush.VS/Classification` or `Outlining`. Check `MuteStateService.Changed` is firing before blaming the matcher.
+- Hotkey not firing → VSCT command IDs in `HushCommands.vsct` must match `Constants.cs`; editor-context-only firing is by design.

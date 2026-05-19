@@ -22,7 +22,7 @@ BufferDocumentAdapter ──► MatchContext { SourceText, SyntaxTree?, Semantic
                                             │
                 ┌───────────────────────────┴───────────────┐
                 ▼                                           ▼
-        MutedClassifier                          MutedOutliningTagger
+        HushClassifier                          HushOutliningTagger
         (ClassificationSpan)                     (IsDefaultCollapsed)
 ```
 
@@ -32,7 +32,7 @@ The seam between Core and VS is `IMuteSpanProvider`. Core has zero VS dependenci
 
 | Location | Frequency | Notes |
 |---|---|---|
-| `MutedClassifier.GetClassificationSpans` | Per visible region, per buffer change, per scroll. Many calls per second. | Currently re-runs the **entire** rule pipeline on every call and filters at the end. See "Performance ideas". |
+| `HushClassifier.GetClassificationSpans` | Per visible region, per buffer change, per scroll. Many calls per second. | Currently re-runs the **entire** rule pipeline on every call and filters at the end. See "Performance ideas". |
 | `BufferDocumentAdapter.Build` | Once per classifier/tagger call. | Uses `TryGetSyntaxTree` (sync, returns false if not cached). Falls back to standalone `CSharpSyntaxTree.ParseText` — that's an extra parse on every call when not in a workspace. |
 | `MuteSpanProvider.GetSpans` | Per `Build` call. | Walks the syntax tree once per rule via `DescendantNodes().OfType<...>()`. With N rules and M nodes that's roughly O(N·M). Materializes all candidates into a `List` before exclusions run. |
 | `RegexMatcher.Match` | Per regex rule, per call. | **Compiles a fresh `Regex` every invocation** — `new Regex(pattern, ...)` is not cached. Easy win to cache by pattern string. |
@@ -40,9 +40,9 @@ The seam between Core and VS is `IMuteSpanProvider`. Core has zero VS dependenci
 
 ## Threading model
 
-- **`MutedClassifier`** and **`MutedOutliningTagger`** are invoked on the UI thread. Anything blocking inside them stalls the editor.
+- **`HushClassifier`** and **`HushOutliningTagger`** are invoked on the UI thread. Anything blocking inside them stalls the editor.
 - **Never** call `.Result` / `.Wait()` on Roslyn `*Async` methods from these — that's a documented deadlock vector (vs-threading VSTHRD002). `BufferDocumentAdapter` uses `Document.TryGetSyntaxTree` / `TryGetSemanticModel` (sync, cache-only) precisely for this reason.
-- `MuteState.Changed` fires on whichever thread invoked `Toggle()`. Both consumers (`MutedClassifier`, `MutedOutliningTagger`) raise their own change event over the **entire buffer** in response — that triggers a full reclassify on every toggle. Cheap correctness, expensive at scale.
+- `MuteState.Changed` fires on whichever thread invoked `Toggle()`. Both consumers (`HushClassifier`, `HushOutliningTagger`) raise their own change event over the **entire buffer** in response — that triggers a full reclassify on every toggle. Cheap correctness, expensive at scale.
 
 ## The match heuristic (and why some things don't mute)
 
@@ -66,22 +66,22 @@ These tripped us up; record any new ones here:
 - The package's auto-imported `build/Microsoft.VSSDK.BuildTools.targets` **only sets env vars**. The real targets (`CreateVsixContainer`, `GeneratePkgDef`, `VSCTCompile`, `DeployVsixExtensionFiles`) live in `tools/VSSDK/Microsoft.VsSDK.targets` and must be **explicitly imported**. `$(VSToolsPath)` is not reliably set under SDK-style projects in VS 18 — point at `$(NuGetPackageRoot)microsoft.vssdk.buildtools\<version>\tools\VSSDK\Microsoft.VsSDK.targets` instead.
 - That explicit Import **must run AFTER `Sdk.targets`**, otherwise `Microsoft.NET.Sdk.targets` overwrites `$(PrepareForRunDependsOn)` and `CreateVsixContainer` never gets wired into the build. Hence the explicit-import csproj form (`<Import Project="Sdk.props" Sdk="Microsoft.NET.Sdk"/>` ... `<Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk"/>` ... explicit VsSDK Import last) instead of `<Project Sdk="...">`.
 - VsSDK targets define `$(ResourceManifest)` and friends as `$(IntermediateOutputPath)\resources.json` at import time, but the SDK doesn't populate `$(IntermediateOutputPath)` until later. Result: files land at the **drive root** and the build fails with `VSSDK1207`. We pin all of them explicitly via the `_MutedVsixIntermediate` PropertyGroup. Don't remove it.
-- `<UseCodebase>true</UseCodebase>` is required so the generated `.pkgdef` includes a `CodeBase` entry pointing at the deployed extension folder. Without it VS resolves the package assembly against `Common7\IDE\` and fails with `Could not load file or assembly 'MutedBoilerplate.VS, ...'`.
+- `<UseCodebase>true</UseCodebase>` is required so the generated `.pkgdef` includes a `CodeBase` entry pointing at the deployed extension folder. Without it VS resolves the package assembly against `Common7\IDE\` and fails with `Could not load file or assembly 'Hush.VS, ...'`.
 - F5 needs explicit `<StartAction>Program</StartAction>` + `<StartProgram>$(DevEnvDir)devenv.exe</StartProgram>` + `<StartArguments>/rootsuffix Exp</StartArguments>` — SDK-style net472 projects aren't recognized as launchable VSIX projects without these.
 
 ## Where things land at runtime
 
-- **VSIX output**: `src/MutedBoilerplate.VS/bin/Debug/net472/MutedBoilerplate.VS.vsix`
-- **Experimental-hive deployment** (overwritten by F5): `%LOCALAPPDATA%\Microsoft\VisualStudio\18.0_*Exp\Extensions\MutedBoilerplate\Muted Boilerplate\<version>\`
+- **VSIX output**: `src/Hush.VS/bin/Debug/net472/Hush.VS.vsix`
+- **Experimental-hive deployment** (overwritten by F5): `%LOCALAPPDATA%\Microsoft\VisualStudio\18.0_*Exp\Extensions\Hush\Hush\<version>\` — installer derives this from the vsixmanifest `Publisher` + `DisplayName`, so renaming the product changes the path. Pre-Hush installs live under the old `MutedBoilerplate\Muted Boilerplate\` folder and need to be uninstalled manually if both versions show up in the Extensions Manager.
 - **Activity log** (write-only into the Exp instance via `devenv /log /rootsuffix Exp`): `%APPDATA%\Microsoft\VisualStudio\18.0_*Exp\ActivityLog.xml`
 - **VsSDK targets** (read-only, useful when tracing target chains): `%USERPROFILE%\.nuget\packages\microsoft.vssdk.buildtools\<version>\tools\VSSDK\Microsoft.VsSDK.targets`
 
 ## Debugging entry points
 
-- **A specific call isn't muting**: breakpoint in `RoslynCallMatcher.TryMatch` (Core). Step through `TryGetMethodAndReceiver` and the heuristic — usually `methodName` or `receiverName` is unexpected. Add a unit test in `tests/MutedBoilerplate.Core.Tests/` reproducing it; the Core layer is where to fix matching, not the VS layer.
+- **A specific call isn't muting**: breakpoint in `RoslynCallMatcher.TryMatch` (Core). Step through `TryGetMethodAndReceiver` and the heuristic — usually `methodName` or `receiverName` is unexpected. Add a unit test in `tests/Hush.Core.Tests/` reproducing it; the Core layer is where to fix matching, not the VS layer.
 - **Mute toggles work but the editor doesn't redraw**: check that `MuteStateService.Changed` fires (it does on `Toggle*`/`Set*`/`Set+ExclusionsEnabled`). The classifier and tagger both subscribe and re-raise their own change events over the whole buffer.
-- **Hotkey doesn't fire**: VSCT command IDs in `MutedBoilerplateCommands.vsct` and `Constants.cs` must match. The chord (`Ctrl+Alt+M`, `<key>`) is in the `<KeyBindings>` section. Editor context is `guidVSStd97` — it only fires when an editor has focus.
-- **Package fails to load in the Exp hive**: read `ActivityLog.xml` for the package GUID (`7B4B1D6C-1F0A-4D4F-9E1D-1A6B5B0A2E10`). Most failures are assembly resolution — confirm `MutedBoilerplate.VS.dll` and `MutedBoilerplate.Core.dll` actually landed in the deployment folder above, and that the `.pkgdef` has a `CodeBase` line.
+- **Hotkey doesn't fire**: VSCT command IDs in `HushCommands.vsct` and `Constants.cs` must match. The chord (`Ctrl+Alt+M`, `<key>`) is in the `<KeyBindings>` section. Editor context is `guidVSStd97` — it only fires when an editor has focus.
+- **Package fails to load in the Exp hive**: read `ActivityLog.xml` for the package GUID (`7B4B1D6C-1F0A-4D4F-9E1D-1A6B5B0A2E10`). Most failures are assembly resolution — confirm `Hush.VS.dll` and `Hush.Core.dll` actually landed in the deployment folder above, and that the `.pkgdef` has a `CodeBase` line.
 - **Build target tracing**: bump MSBuild verbosity (Tools → Options → Projects and Solutions → Build and Run → Detailed) and grep Output for `CreateVsixContainer`, `SetVsSDKEnvironmentVariables`, `MergeCtoResource`. Their absence usually means the explicit Import or the property-pinning got reverted.
 
 ## Performance ideas (not yet done)
@@ -99,17 +99,17 @@ In rough order of impact:
 ## What lives where
 
 ```
-src/MutedBoilerplate.Core/         — netstandard2.0, no VS deps
+src/Hush.Core/         — netstandard2.0, no VS deps
   Model/                            — POCOs (MuteCategory, MuteSpan, MuteState, MuteStyle)
   Rules/                            — RuleSet JSON model + DefaultRules.json (embedded)
   Matching/                         — IRuleMatcher impls + MuteSpanProvider
-src/MutedBoilerplate.VS/           — net472 VSIX, depends on Core
+src/Hush.VS/           — net472 VSIX, depends on Core
   Classification/                   — MEF classifier + format definitions
   Outlining/                        — ITagger<IOutliningRegionTag>
   Options/                          — DialogPage + MuteStateService singleton + UserSlotMap
   Integration/                      — BufferDocumentAdapter (the only ITextBuffer-aware code)
-  MutedBoilerplatePackage.cs        — AsyncPackage, command/options registration
-  MutedBoilerplateCommands.vsct     — menus + keybindings
-tests/MutedBoilerplate.Core.Tests/ — xUnit, runs on net8.0 against the netstandard2.0 Core
+  HushPackage.cs        — AsyncPackage, command/options registration
+  HushCommands.vsct     — menus + keybindings
+tests/Hush.Core.Tests/ — xUnit, runs on net8.0 against the netstandard2.0 Core
   Fixtures/                         — sample .cs files for manual F5 testing (excluded from compile)
 ```

@@ -41,8 +41,8 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
-$project  = Join-Path $repoRoot 'src\MutedBoilerplate.VS\MutedBoilerplate.VS.csproj'
-$vsixDir  = Join-Path $repoRoot "src\MutedBoilerplate.VS\bin\$Configuration\net472"
+$project  = Join-Path $repoRoot 'src\Hush.VS\Hush.VS.csproj'
+$vsixDir  = Join-Path $repoRoot "src\Hush.VS\bin\$Configuration\net472"
 if (-not $OutputDir) {
   $OutputDir = Join-Path $repoRoot 'artifacts'
 }
@@ -63,7 +63,7 @@ if ($Version -notmatch '^\d+\.\d+\.\d+(\.\d+)?$') {
   throw "Version '$Version' is not a valid VSIX version (expected W.X.Y[.Z])."
 }
 
-Write-Host "==> Packing MutedBoilerplate.VS version $Version ($Configuration)"
+Write-Host "==> Packing Hush.VS version $Version ($Configuration)"
 
 $msbuild = (Get-Command msbuild.exe -ErrorAction SilentlyContinue).Source
 if (-not $msbuild) {
@@ -85,7 +85,7 @@ if ($LASTEXITCODE -ne 0) { throw "msbuild failed with exit code $LASTEXITCODE" }
 $vsix = Get-ChildItem -Path $vsixDir -Filter '*.vsix' -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $vsix) { throw "Build succeeded but no .vsix found under $vsixDir" }
 
-$finalPath = Join-Path $OutputDir 'muted-boilerplate-vs.vsix'
+$finalPath = Join-Path $OutputDir 'hush-vs.vsix'
 Move-Item -LiteralPath $vsix.FullName -Destination $finalPath -Force
 
 Write-Host ""

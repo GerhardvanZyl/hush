@@ -30,8 +30,8 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
-$extDir   = Join-Path $repoRoot 'src\MutedBoilerplate.VSCode'
-$sidecar  = Join-Path $repoRoot 'src\MutedBoilerplate.VSCode.Sidecar'
+$extDir   = Join-Path $repoRoot 'src\Hush.VSCode'
+$sidecar  = Join-Path $repoRoot 'src\Hush.VSCode.Sidecar'
 
 if (-not $OutputDir) {
   $OutputDir = Join-Path $repoRoot 'artifacts'
@@ -67,7 +67,7 @@ try {
     'osx-arm64'   { 'darwin-arm64' }
   }
   Write-Host "Packaging vsce target=$vsceTarget..."
-  $vsixName = "muted-boilerplate-vscode-$Rid.vsix"
+  $vsixName = "hush-vscode-$Rid.vsix"
   $vsixPath = Join-Path $OutputDir $vsixName
   # `npx vsce` avoids requiring a global install.
   & npx --yes @vscode/vsce package --target $vsceTarget --out $vsixPath
