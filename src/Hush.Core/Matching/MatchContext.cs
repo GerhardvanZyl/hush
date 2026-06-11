@@ -48,10 +48,19 @@ public sealed class MatchContext
     public static MatchContext FromCSharpWithSemantics(string code)
     {
         var tree = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(code);
-        var refs = new[]
+        var refs = new System.Collections.Generic.List<MetadataReference>
         {
             MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location),
         };
+        // On .NET Core/5+ the core types are facaded through System.Runtime —
+        // without it extension-method signatures (e.g. Enumerable.Count over
+        // IEnumerable<T>) don't bind. Absent on .NET Framework, hence the probe.
+        var runtimeFacade = System.IO.Path.Combine(
+            System.IO.Path.GetDirectoryName(typeof(object).Assembly.Location) ?? "",
+            "System.Runtime.dll");
+        if (System.IO.File.Exists(runtimeFacade))
+            refs.Add(MetadataReference.CreateFromFile(runtimeFacade));
         var comp = Microsoft.CodeAnalysis.CSharp.CSharpCompilation.Create(
             "Hush.Core.Tests.Inline",
             new[] { tree },

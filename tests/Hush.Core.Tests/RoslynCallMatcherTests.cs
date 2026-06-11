@@ -320,6 +320,114 @@ public class RoslynCallMatcherTests
         Assert.Empty(spans);
     }
 
+    [Fact]
+    public void Matches_when_argument_counts_items_with_linq_inside_interpolated_string()
+    {
+        // LINQ query operators (Count, Any, Sum…) are read-only over their
+        // source — counting items to format a log message is the same kind of
+        // "free" work as ToString, not real work that must stay visible.
+        var code = """
+            using System.Diagnostics;
+            using System.Linq;
+            class C
+            {
+                void M(System.Collections.Generic.List<Entry> logs, Entry device)
+                {
+                    Debug.WriteLine($"{device.DeviceID} -- {logs.Count(x => x.DeviceID == device.DeviceID)} Retrieved");
+                }
+            }
+            class Entry { public int DeviceID; }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new RoslynCallMatcher().Match(DebugWriteLineRule(), ctx).ToList();
+        Assert.Single(spans);
+    }
+
+    [Fact]
+    public void Matches_linq_operator_when_semantics_resolves_to_enumerable()
+    {
+        var code = """
+            using System.Linq;
+            class C
+            {
+                private readonly Microsoft.Extensions.Logging.ILogger _logger;
+                void M(System.Collections.Generic.List<int> xs)
+                {
+                    _logger.LogInformation("c={C}", xs.Count(x => x > 1));
+                }
+            }
+            namespace Microsoft.Extensions.Logging
+            {
+                interface ILogger
+                {
+                    void LogInformation(string s, params object[] a);
+                }
+            }
+            """;
+        var ctx = MatchContext.FromCSharpWithSemantics(code);
+        var spans = new RoslynCallMatcher().Match(TestRuleSet.LoggerCallRule(), ctx).ToList();
+        Assert.Single(spans);
+    }
+
+    [Fact]
+    public void Does_not_match_user_method_with_linq_name_when_semantics_resolves_to_user_assembly()
+    {
+        // A user-defined method that happens to be called `Count` is unknown
+        // work — with semantics it resolves to the user's assembly, not the
+        // BCL, so the site stays visible.
+        var code = """
+            class C
+            {
+                private readonly Microsoft.Extensions.Logging.ILogger _logger;
+                void M(C other)
+                {
+                    _logger.LogInformation("c={C}", other.Count());
+                }
+                public int Count() => 1;
+            }
+            namespace Microsoft.Extensions.Logging
+            {
+                interface ILogger
+                {
+                    void LogInformation(string s, params object[] a);
+                }
+            }
+            """;
+        var ctx = MatchContext.FromCSharpWithSemantics(code);
+        var spans = new RoslynCallMatcher().Match(TestRuleSet.LoggerCallRule(), ctx).ToList();
+        Assert.Empty(spans);
+    }
+
+    [Fact]
+    public void Does_not_match_unreceivered_linq_named_call_without_semantics()
+    {
+        // Without semantics the LINQ whitelist only trusts receiver-qualified
+        // calls (`xs.Count(...)`); a bare `Count()` is a user method.
+        var code = """
+            class C
+            {
+                private readonly ILogger _logger;
+                void M()
+                {
+                    _logger.LogInformation("c={C}", Count());
+                }
+                int Count() => 1;
+            }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new RoslynCallMatcher().Match(TestRuleSet.LoggerCallRule(), ctx).ToList();
+        Assert.Empty(spans);
+    }
+
+    private static Hush.Core.Rules.MuteRule DebugWriteLineRule() => new()
+    {
+        Name = "debug-trace",
+        Category = MuteCategory.LoggingKey,
+        Kind = Hush.Core.Rules.RuleKind.RoslynCall,
+        Pattern = new Hush.Core.Rules.RulePattern { ReceiverTypeGlob = "Debug|Trace", MethodNameGlob = "WriteLine|Write" },
+        Scope = MuteScope.WholeStatement,
+    };
+
     private static Hush.Core.Rules.MuteRule HasListenersRule() => new()
     {
         Name = "activity-source",

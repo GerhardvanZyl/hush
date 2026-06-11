@@ -61,8 +61,62 @@ internal static class InlineWorkDetector
         if (name.Length >= 3 && name[0] == 'G' && name[1] == 'e' && name[2] == 't')
             return IsBclGetMethod(inv, name, semantics);
 
-        return false;
+        return IsPureLinqQuery(inv, name, semantics);
     }
+
+    // LINQ query operators (Count, Any, Sum…) are read-only over their source —
+    // counting or picking items to format a log message is the same kind of
+    // "free" work as ToString. With semantics the call must resolve to a BCL
+    // assembly (so a user-defined `Count()` still disqualifies); without them
+    // only receiver-qualified calls (`xs.Count(...)`) are trusted, since a bare
+    // `Count()` can only be a user method.
+    private static bool IsPureLinqQuery(
+        InvocationExpressionSyntax inv,
+        string name,
+        SemanticModel? semantics)
+    {
+        if (!LinqQueryOperatorNames.Contains(name)) return false;
+
+        if (semantics is not null)
+        {
+            var sym = semantics.GetSymbolInfo(inv.Expression).Symbol as IMethodSymbol;
+            while (sym is not null)
+            {
+                if (sym.ContainingAssembly is { } asm && IsBclAssembly(asm.Identity.Name))
+                    return true;
+                sym = sym.OverriddenMethod;
+            }
+            // Symbol resolved but isn't BCL — definitively user code, not exempt.
+            // Unresolved — fall through to the syntactic check, as in IsBclGetMethod.
+            if (semantics.GetSymbolInfo(inv.Expression).Symbol is not null) return false;
+        }
+
+        return inv.Expression is MemberAccessExpressionSyntax or MemberBindingExpressionSyntax;
+    }
+
+    private static readonly HashSet<string> LinqQueryOperatorNames = new(StringComparer.Ordinal)
+    {
+        "Count",
+        "LongCount",
+        "Any",
+        "All",
+        "Sum",
+        "Average",
+        "Min",
+        "Max",
+        "MinBy",
+        "MaxBy",
+        "First",
+        "FirstOrDefault",
+        "Last",
+        "LastOrDefault",
+        "Single",
+        "SingleOrDefault",
+        "ElementAt",
+        "ElementAtOrDefault",
+        "Contains",
+        "SequenceEqual",
+    };
 
     private static bool IsBclGetMethod(
         InvocationExpressionSyntax inv,
