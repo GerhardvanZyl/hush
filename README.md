@@ -1,8 +1,6 @@
 # Hush
 
-A Visual Studio + VS Code extension that visually mutes boilerplate code (telemetry calls, logging, method signatures, parameter guards, etc.) so it fades into the background while the meaningful logic stays prominent.
-
-> The repo, solution, and assemblies still carry the original `Hush` name internally — only the user-facing product has been renamed to **Hush**. New code should keep using the `Hush.*` namespaces.
+A Visual Studio + VS Code extension that visually mutes boilerplate code (telemetry calls, logging, parameter guards, etc.) so it fades into the background while the meaningful logic stays prominent.
 
 ## Goals
 
@@ -23,7 +21,6 @@ A Visual Studio + VS Code extension that visually mutes boilerplate code (teleme
 |-----------|--------------------------------------------------|---------------|
 | Telemetry | `#7A7A7A`, opacity 0.55, italic, 90% font size   | off           |
 | Logging   | `#888888`, opacity 0.60, 90% font size           | off           |
-| Signature | inherited fg, opacity 0.80, 92% font size        | off           |
 | User 1–8  | `#8A8A8A`, opacity 0.60, 100% font size          | off           |
 
 Override foreground/typeface in **Tools → Options → Fonts and Colors** under the `Muted *` entries. Toggle auto-collapse and pick a custom rules file in **Tools → Options → Hush**.
