@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - run: dotnet test tests/Hush.Core.Tests -c Release
+
+  vsix-vs:
+    # Visual Studio .vsix — needs Windows + MSBuild + VSSDK BuildTools (from NuGet).
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # pack.ps1 derives version from `git rev-list --count HEAD`
+      - uses: microsoft/setup-msbuild@v2
+      - name: Pack VSIX
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -like 'refs/tags/v*') { $env:VSIX_VERSION = $env:GITHUB_REF_NAME.TrimStart('v') }
+          ./build/pack.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix-vs
+          path: artifacts/hush-vs.vsix
+
+  vsix-vscode:
+    # Six platform-specific VS Code .vsix installers, each bundling its own sidecar.
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Pack VS Code VSIXes
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_REF -like 'refs/tags/v*') { $env:VSIX_VERSION = $env:GITHUB_REF_NAME.TrimStart('v') }
+          ./build/pack-vscode.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix-vscode
+          path: artifacts/hush-vscode-*.vsix
+
+  publish:
+    # Attach every installer to one GitHub Release. Tags only.
+    needs: [vsix-vs, vsix-vscode]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish release
+        run: gh release create "$GITHUB_REF_NAME" dist/*.vsix --repo "$GITHUB_REPOSITORY" --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
