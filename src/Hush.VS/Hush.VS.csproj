@@ -48,7 +48,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.VisualStudio.SDK" Version="17.14.40265" ExcludeAssets="runtime" />
-    <PackageReference Include="Microsoft.VSSDK.BuildTools" Version="17.14.2142" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.VSSDK.BuildTools" Version="17.14.2142" PrivateAssets="all" GeneratePathProperty="true" />
     <PackageReference Include="Microsoft.VisualStudio.LanguageServices" Version="4.14.0" ExcludeAssets="runtime" />
   </ItemGroup>
 
@@ -96,7 +96,10 @@
        etc.) survive. The auto-imported Microsoft.VSSDK.BuildTools.targets only
        sets environment variables — the real targets live in tools/VSSDK/. -->
   <PropertyGroup>
-    <_VsSdkBuildToolsTargets>$(NuGetPackageRoot)microsoft.vssdk.buildtools\17.14.2142\tools\VSSDK\Microsoft.VsSDK.targets</_VsSdkBuildToolsTargets>
+    <!-- Resolve via the NuGet-generated Pkg* path property, not $(NuGetPackageRoot):
+         the latter isn't reliably populated on CI runners, so the Exists() guard
+         below fell through and CreateVsixContainer never ran (DLL built, no .vsix). -->
+    <_VsSdkBuildToolsTargets>$(PkgMicrosoft_VSSDK_BuildTools)\tools\VSSDK\Microsoft.VsSDK.targets</_VsSdkBuildToolsTargets>
     <AssemblyVersion>1.0.0.1</AssemblyVersion>
     <FileVersion>1.0.0.1</FileVersion>
   </PropertyGroup>
