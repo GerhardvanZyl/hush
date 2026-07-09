@@ -2,7 +2,7 @@
   "name": "hush-vscode",
   "displayName": "Hush",
   "description": "Hush — visually quiet the boilerplate (telemetry, logging, signatures, guards) so the meaningful code stays loud.",
-  "version": "0.1.0",
+  "version": "0.1.29",
   "publisher": "GerhardVanZyl",
   "icon": "icon.png",
   "engines": {

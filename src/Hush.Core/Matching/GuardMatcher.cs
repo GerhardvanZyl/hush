@@ -49,14 +49,25 @@ public sealed class GuardMatcher : IRuleMatcher
         }
         if (paramNames is null) return result;
 
-        // Walk the entry block of the method. Contiguous guards collapse into a
-        // single span; "bare call" statements (telemetry/logging/tracing) are
-        // transparent — they don't end detection and don't get folded into the
-        // span (their own rules mute them independently). Any other statement
-        // ends the entry block.
+        Collect(body.Statements, paramNames, semantics, result);
+        return result;
+    }
+
+    // Walk the entry block of a method (or a leading try block). Contiguous guards
+    // collapse into a single span; "bare call" statements (telemetry/logging/tracing)
+    // are transparent — they don't end detection and don't get folded into the span
+    // (their own rules mute them independently). A leading `try` is a common wrapper:
+    // guards sit at the top of its block, so we descend into it once. Any other
+    // statement ends the entry block.
+    private static void Collect(
+        SyntaxList<StatementSyntax> statements,
+        HashSet<string> paramNames,
+        SemanticModel? semantics,
+        List<TextSpan> result)
+    {
         int runStart = -1;
         int runEnd = -1;
-        foreach (var stmt in body.Statements)
+        foreach (var stmt in statements)
         {
             if (IsGuardStatement(stmt, paramNames, semantics))
             {
@@ -66,20 +77,28 @@ public sealed class GuardMatcher : IRuleMatcher
             }
             if (IsBoilerplateCallStatement(stmt))
             {
-                if (runStart >= 0)
-                {
-                    result.Add(TextSpan.FromBounds(runStart, runEnd));
-                    runStart = -1;
-                    runEnd = -1;
-                }
+                Flush(result, ref runStart, ref runEnd);
                 continue;
+            }
+            if (stmt is TryStatementSyntax trys)
+            {
+                Flush(result, ref runStart, ref runEnd);
+                Collect(trys.Block.Statements, paramNames, semantics, result);
             }
             break;
         }
 
+        Flush(result, ref runStart, ref runEnd);
+    }
+
+    private static void Flush(List<TextSpan> result, ref int runStart, ref int runEnd)
+    {
         if (runStart >= 0)
+        {
             result.Add(TextSpan.FromBounds(runStart, runEnd));
-        return result;
+            runStart = -1;
+            runEnd = -1;
+        }
     }
 
     private static bool IsBoilerplateCallStatement(StatementSyntax stmt)

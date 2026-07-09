@@ -649,6 +649,35 @@ public class GuardMatcherTests
     }
 
     [Fact]
+    public void Matches_guard_at_top_of_leading_try_block()
+    {
+        // The whole method body is a try/catch wrapper — guards live at the top
+        // of the try block, not directly under the method body.
+        var code = """
+            class C
+            {
+                void M(string date)
+                {
+                    try
+                    {
+                        System.ArgumentNullException.ThrowIfNull(date);
+                        Use(date);
+                    }
+                    catch (System.Exception ex)
+                    {
+                        throw new System.Exception("bad", ex);
+                    }
+                }
+                void Use(string s) {}
+            }
+            """;
+        var ctx = MatchContext.FromCSharp(code);
+        var spans = new GuardMatcher().Match(GuardRule(), ctx).ToList();
+        Assert.Single(spans);
+        Assert.Contains("ThrowIfNull(date)", Snippet(ctx, spans[0]));
+    }
+
+    [Fact]
     public void Does_not_match_if_throw_when_body_mutates()
     {
         var code = """
