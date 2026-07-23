@@ -4,6 +4,7 @@
   "description": "Hush — visually quiet the boilerplate (telemetry, logging, signatures, guards) so the meaningful code stays loud.",
   "version": "0.1.29",
   "publisher": "GerhardVanZyl",
+  "author": "Gerhard van Zyl",
   "icon": "icon.png",
   "engines": {
     "vscode": "^1.85.0"
