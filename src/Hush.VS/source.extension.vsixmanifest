@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
   <Metadata>
-    <Identity Id="Hush.VS.0a1a1a1a-0000-0000-0000-000000000002" Version="0.1.29" Language="en-US" Publisher="Hush" />
+    <Identity Id="Hush.VS.0a1a1a1a-0000-0000-0000-000000000002" Version="0.1.29" Language="en-US" Publisher="Gerhard van Zyl" />
     <DisplayName>Hush</DisplayName>
     <Description xml:space="preserve">Hush — visually quiet the boilerplate (telemetry, logging, signatures, guards) so the meaningful code stays loud. Configurable styles, hotkeys, and user-defined categories.</Description>
     <MoreInfo>https://github.com/Hush</MoreInfo>
