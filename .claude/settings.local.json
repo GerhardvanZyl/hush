@@ -22,7 +22,13 @@
       "Bash(\"/c/Program Files/Microsoft Visual Studio/18/Enterprise/MSBuild/Current/Bin/MSBuild.exe\" src/Hush.VS/Hush.VS.csproj -t:Rebuild -nologo -v:n -p:Configuration=Debug -p:DeployExtension=false)",
       "Bash(curl -s \"https://api.nuget.org/v3-flatcontainer/microsoft.visualstudio.sdk/index.json\")",
       "Bash(git stash *)",
-      "Bash(Find . -type f -name \"*.csproj\")"
+      "Bash(Find . -type f -name \"*.csproj\")",
+      "Read(//c/Users/vanzy/.nuget/packages/microsoft.vssdk.buildtools/17.14.2142/**)",
+      "Read(//c/Users/vanzy/.nuget/packages/microsoft.vssdk.buildtools/**)",
+      "Bash(git config *)",
+      "Bash(git push *)",
+      "PowerShell(& \"C:\\\\Program Files\\\\dotnet\\\\dotnet.exe\" --list-sdks 2>&1)",
+      "PowerShell(& \"C:\\\\Program Files\\\\dotnet\\\\dotnet.exe\" --list-runtimes 2>&1)"
     ]
   }
 }

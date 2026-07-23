@@ -74,10 +74,16 @@ if (-not $msbuild) {
 }
 if (-not $msbuild) { throw "Could not locate msbuild.exe. Run from a Developer PowerShell or install VS Build Tools." }
 
+# /restore switch (not /t:Restore) so MSBuild re-evaluates AFTER restore — the
+# VsSDK import in the csproj keys on $(PkgMicrosoft_VSSDK_BuildTools), an
+# evaluation-time property from the restore-generated nuget.g.props. With
+# /t:Restore;Rebuild the project is evaluated once BEFORE restore, so that
+# property is empty, the VsSDK targets never import, and you get a DLL but no .vsix.
 & $msbuild $project `
   "/p:Configuration=$Configuration" `
   "/p:VsixVersion=$Version" `
-  /t:Restore`;Rebuild `
+  /restore `
+  /t:Rebuild `
   /nologo `
   /v:minimal
 if ($LASTEXITCODE -ne 0) { throw "msbuild failed with exit code $LASTEXITCODE" }
